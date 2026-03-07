@@ -1,0 +1,134 @@
+
+     <!--TABLEAU MAPPINGS -->
+    <!--<div class="bg-white rounded-lg shadow-sm border mt-8">-->
+    <!--    <div class="p-4 border-b flex justify-between items-center">-->
+    <!--        <h3 class="font-bold">Correspondances établies</h3>-->
+    <!--    </div>-->
+    <!--    <div class="overflow-x-auto">-->
+    <!--        <table class="w-full text-sm">-->
+    <!--            <thead class="bg-gray-50">-->
+    <!--                <tr>-->
+    <!--                    <th class="px-6 py-1 text-left">Ancien compte</th>-->
+    <!--                    <th class="px-6 py-1 text-center">→</th>-->
+    <!--                    <th class="px-6 py-1 text-left">Nouveau compte</th>-->
+    <!--                    <th class="px-6 py-1 text-left">Notes</th>-->
+    <!--                    <th class="px-6 py-1 text-right">Action</th>-->
+    <!--                </tr>-->
+    <!--            </thead>-->
+    <!--            <tbody class="divide-y">-->
+    <!--                @forelse($mappings as $map)-->
+    <!--                    <tr class="hover:bg-gray-50">-->
+
+
+    <!--                        <td class="px-6 py-1">-->
+    <!--                            <div class="text-gray-700">-->
+    <!--                                <span class="font-mono text-blue-700">{{ $map->oldAccount->code }}</span>-->
+    <!--                                --->
+    <!--                                <span class="text-gray-600">{{ $map->oldAccount->intitule }}</span>-->
+    <!--                            </div>-->
+    <!--                        </td>-->
+
+    <!--                        <td class="text-center text-gray-400">→</td>-->
+
+
+    <!--                        <td class="px-6 py-1">-->
+    <!--                            <div class="text-gray-700">-->
+    <!--                                <span class="font-mono text-blue-700">{{ $map->newAccount->code }}</span>-->
+    <!--                                --->
+    <!--                                <span class="text-gray-600">{{ $map->newAccount->intitule }}</span>-->
+    <!--                            </div>-->
+    <!--                        </td>-->
+
+    <!--                        <td class="px-6 py-1 text-gray-500">-->
+    <!--                            {{ $map->commentaire ?? '-' }}-->
+    <!--                        </td>-->
+
+    <!--                        <td class="px-6 py-1 text-right">-->
+    <!--                            {{-- <button wire:click="openEditMapping({{ $map->id }})"-->
+    <!--                                    class="text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded ml-2">-->
+    <!--                                Modifier-->
+    <!--                            </button> --}}-->
+    <!--                            <button-->
+    <!--                                    class="text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded ml-2">-->
+    <!--                                Modifier-->
+    <!--                            </button>-->
+    <!--                        </td>-->
+    <!--                    </tr>-->
+    <!--                @empty-->
+    <!--                    <tr>-->
+    <!--                        <td colspan="5" class="text-center py-12 text-gray-400">-->
+    <!--                            Aucune correspondance établie-->
+    <!--                        </td>-->
+    <!--                    </tr>-->
+    <!--                @endforelse-->
+    <!--            </tbody>-->
+    <!--        </table>-->
+    <!--    </div>-->
+    <!--</div>-->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+            {{-- <div class="bg-white p-4 rounded-lg shadow border">
+                <p class="text-sm text-gray-500">Total Débit</p>
+                <p class="text-2xl font-bold text-red-600">
+                    {{ number_format($stats['total_debit'], 2, ',', ' ') }}
+                </p>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow border">
+                <p class="text-sm text-gray-500">Total Crédit</p>
+                <p class="text-2xl font-bold text-green-600">
+                    {{ number_format($stats['total_credit'], 2, ',', ' ') }}
+                </p>
+            </div> --}}
+            {{-- <div class="bg-white p-4 rounded-lg shadow border">
+                <p class="text-sm text-gray-500">Solde</p>
+                <p class="text-2xl font-bold {{ $stats['solde'] >= 0 ? 'text-blue-600' : 'text-orange-600' }}">
+                    {{ number_format($stats['solde'], 2, ',', ' ') }}
+                </p>
+            </div> --}}
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            Grand livre
+            
+                                <!-- Sous-titre de l'ancien compte (si plusieurs anciens comptes) -->
+                                <!-- @if(count($group['old_accounts_data']) > 1)
+                                <tr class="bg-orange-50">
+                                    <td colspan="2" class="px-2 py-0.5 text-left text-xs font-medium text-orange-700" style="font-size: 10px;">
+                                        → {{ $oldAccountData['account']->code }} 
+                                    </td>
+                                    <td colspan="4" class="px-2 py-0.5 text-left text-xs italic text-orange-600" style="font-size: 10px;">
+                                        {{ $oldAccountData['account']->intitule }}
+                                    </td>
+                                    <td class="px-2 py-0.5 text-right text-xs text-red-500" style="font-size: 10px;">
+                                        {{ number_format($oldAccountData['total_debit'], 0, '', ' ') }}
+                                    </td>
+                                    <td class="px-2 py-0.5 text-right text-xs text-green-500" style="font-size: 10px;">
+                                        {{ number_format($oldAccountData['total_credit'], 0, '', ' ') }}
+                                    </td>
+                                </tr>
+                                @endif -->

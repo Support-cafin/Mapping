@@ -1,0 +1,1499 @@
+<?php
+
+namespace App\Livewire\Balance;
+
+use Livewire\Component;
+use Livewire\WithPagination;
+use App\Models\GrandLivre;
+use App\Models\AccountMapping;
+use App\Models\OldAccount;
+use App\Models\NewAccount;
+use App\Models\OldBalance;
+use App\Models\NewBalance;
+use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
+
+class Index extends Component
+{
+    use WithPagination;
+    
+    // Entreprise
+    public $entreprise;
+    
+    // Filtres
+    public $type = 'new'; // Toujours 'new' pour les comptes mappés
+    public $dateDebut;
+    public $dateFin;
+    public $exercice;
+    public $accountId = '';
+    public $viewMode = 'table'; // 'table' ou 'details'
+    public $sortField = 'code';
+    public $sortDirection = 'asc';
+    public $search = '';
+    
+    // Génération
+    public $showGenerateModal = false;
+    public $generateType = 'new'; // 'old', 'new', 'both'
+    public $generateFromDate;
+    public $generateToDate;
+    public $generateExercice;
+    
+    // Données
+    public $balances = [];
+    public $selectedBalance = null;
+    public $balanceDetails = [];
+    public $stats = [
+        'total_comptes' => 0,
+        'total_debit' => 0,
+        'total_credit' => 0,
+        'total_solde' => 0,
+        'total_debit_n1' => 0,
+        'total_credit_n1' => 0,
+        'comptes_crediteurs' => 0,
+        'comptes_debiteurs' => 0,
+        'total_ecritures' => 0,
+    ];
+    
+    // Export
+    public $exportFormat = 'excel';
+    public $showExportOptions = false;
+    
+    protected $queryString = [
+        'type' => ['except' => 'new'],
+        'dateDebut' => ['except' => ''],
+        'dateFin' => ['except' => ''],
+        'exercice' => ['except' => ''],
+        'accountId' => ['except' => ''],
+        'viewMode' => ['except' => 'table'],
+        'search' => ['except' => ''],
+    ];
+    
+    public function mount()
+    {
+        $this->entreprise = auth()->user()->entreprise;
+        
+        // Dates par défaut
+        $this->dateDebut = '2024-01-01';
+        $this->dateFin = '2024-12-31';
+        $this->exercice = now()->year;
+        
+        // Génération
+        $this->generateFromDate = $this->dateDebut;
+        $this->generateToDate = $this->dateFin;
+        $this->generateExercice = $this->exercice;
+        
+        $this->loadBalances();
+    }
+    
+    public function updated($property)
+    {
+        if (in_array($property, ['type', 'dateDebut', 'dateFin', 'exercice', 'accountId', 'search'])) {
+            $this->resetPage();
+            $this->loadBalances();
+        }
+    }
+    
+    public function loadBalances()
+    {
+        $this->balances = $this->getBalancesData();
+        $this->calculateStats();
+    }
+    
+    private function getBalancesData()
+    {
+        $cacheKey = "balance_data_{$this->entreprise->id}_{$this->type}_{$this->dateDebut}_{$this->dateFin}_{$this->exercice}_{$this->accountId}_{$this->search}";
+        
+        return Cache::remember($cacheKey, 300, function () {
+            // Récupérer les comptes SYCEBNL qui ont des mappings
+            $accounts = NewAccount::where('entreprise_id', $this->entreprise->id)
+                ->whereHas('mappings')
+                ->when($this->accountId, function ($query) {
+                    $query->where('id', $this->accountId);
+                })
+                ->when($this->search, function ($query) {
+                    $query->where(function ($q) {
+                        $q->where('code', 'like', '%' . $this->search . '%')
+                          ->orWhere('intitule', 'like', '%' . $this->search . '%');
+                    });
+                })
+                ->orderBy('code')
+                ->get();
+            
+            $balances = [];
+            
+            foreach ($accounts as $account) {
+                // Récupérer les anciens comptes mappés à ce compte SYCEBNL
+                $oldAccountIds = AccountMapping::where('new_account_id', $account->id)
+                    ->where('entreprise_id', $this->entreprise->id)
+                    ->pluck('old_account_id')
+                    ->toArray();
+                
+                if (empty($oldAccountIds)) {
+                    continue; // On ne garde que les comptes qui ont des mappings
+                }
+                
+                // Récupérer toutes les écritures des anciens comptes mappés DANS LA PÉRIODE
+                $ecrituresQuery = GrandLivre::with(['oldAccount'])
+                    ->forEntreprise($this->entreprise->id)
+                    ->whereIn('old_account_id', $oldAccountIds);
+                
+                // Appliquer les filtres de période
+                if ($this->dateDebut && $this->dateFin) {
+                    $ecrituresQuery->whereBetween('date_ecriture', [$this->dateDebut, $this->dateFin]);
+                }
+                
+                if ($this->exercice) {
+                    $ecrituresQuery->where('exercice', $this->exercice);
+                }
+                
+                $ecritures = $ecrituresQuery->valides()->get();
+                
+                // Ajouter les écritures directes sur le nouveau compte (si elles existent)
+                $directEcrituresQuery = GrandLivre::forEntreprise($this->entreprise->id)
+                    ->where('new_account_id', $account->id);
+                
+                if ($this->dateDebut && $this->dateFin) {
+                    $directEcrituresQuery->whereBetween('date_ecriture', [$this->dateDebut, $this->dateFin]);
+                }
+                
+                if ($this->exercice) {
+                    $directEcrituresQuery->where('exercice', $this->exercice);
+                }
+                
+                $directEcritures = $directEcrituresQuery->valides()->get();
+                
+                // Fusionner toutes les écritures
+                $allEcritures = $ecritures->merge($directEcritures);
+                
+                // Si pas d'écritures dans la période, on peut quand même afficher le compte avec des totaux à 0
+                // OU on peut le sauter si vous préférez ne montrer que ceux avec des mouvements
+                
+                // Calculer les totaux (même si 0)
+                $totalDebit = $allEcritures->sum('debit');
+                $totalCredit = $allEcritures->sum('credit');
+                $solde = $totalDebit - $totalCredit;
+                
+                // Calculer les soldes N-1
+                $soldeN1 = $this->getNewAccountSoldeN1($account->id);
+                
+                // Détails par ancien compte
+                $oldAccountsDetails = [];
+                foreach ($oldAccountIds as $oldId) {
+                    $oldEcritures = $allEcritures->where('old_account_id', $oldId);
+                    
+                    // Même si pas d'écritures, on garde le compte pour information
+                    $oldAccount = OldAccount::find($oldId);
+                    if ($oldAccount) {
+                        // Calculer les soldes N-1 pour chaque ancien compte
+                        $oldSoldeN1 = $this->getOldAccountSoldeN1($oldId);
+                        
+                        $oldAccountsDetails[] = [
+                            'id' => $oldId,
+                            'code' => $oldAccount->code ?? 'N/A',
+                            'intitule' => $oldAccount->intitule ?? 'N/A',
+                            'debit' => $oldEcritures->sum('debit'),
+                            'credit' => $oldEcritures->sum('credit'),
+                            'count' => $oldEcritures->count(),
+                            'solde_debit_n1' => $oldSoldeN1['debit'],
+                            'solde_credit_n1' => $oldSoldeN1['credit'],
+                        ];
+                    }
+                }
+                
+                // AJOUTEZ CETTE OPTION : Afficher même les comptes sans écritures dans la période
+                // Si vous voulez voir tous les comptes mappés, même sans mouvement
+                $balances[] = [
+                    'id' => $account->id,
+                    'code' => $account->code,
+                    'intitule' => $account->intitule,
+                    'classe' => $account->classe,
+                    'groupe' => $account->groupe,
+                    'niveau' => $account->niveau,
+                    'type' => 'new',
+                    'solde_debit_n1' => $soldeN1['debit'],
+                    'solde_credit_n1' => $soldeN1['credit'],
+                    'total_debit' => $totalDebit,
+                    'total_credit' => $totalCredit,
+                    'solde' => $solde,
+                    'ecritures_count' => $allEcritures->count(),
+                    'old_accounts' => $oldAccountsDetails,
+                    'old_accounts_count' => count($oldAccountsDetails),
+                    'ecritures' => $allEcritures,
+                    'account' => $account,
+                    'has_movements' => $allEcritures->count() > 0, // Nouveau champ pour filtrage
+                ];
+            }
+            
+            // OPTIONNEL : Filtrer pour ne garder que les comptes avec des mouvements
+            // $balances = array_filter($balances, function($balance) {
+            //     return $balance['has_movements'];
+            // });
+            
+            // Trier
+            $this->sortBalances($balances);
+            return $balances;
+        });
+    }
+    
+    public function debugMappings()
+    {
+        $totalAccounts = NewAccount::where('entreprise_id', $this->entreprise->id)->count();
+        $mappedAccounts = NewAccount::where('entreprise_id', $this->entreprise->id)
+            ->whereHas('mappings')->count();
+        
+        $totalMappings = AccountMapping::where('entreprise_id', $this->entreprise->id)->count();
+        
+        return [
+            'total_accounts' => $totalAccounts,
+            'mapped_accounts' => $mappedAccounts,
+            'total_mappings' => $totalMappings,
+            'balances_count' => count($this->balances),
+        ];
+    }
+    
+    private function getNewAccountSoldeN1($newAccountId)
+    {
+        $anneeN1 = $this->exercice - 1;
+        $soldeN1 = ['debit' => 0, 'credit' => 0];
+        
+        // Récupérer le compte SYCEBNL
+        $account = NewAccount::find($newAccountId);
+        
+        // 1. Vérifier d'abord si des soldes N-1 sont stockés
+        if ($account && ($account->solde_debit_n1 > 0 || $account->solde_credit_n1 > 0)) {
+            return [
+                'debit' => $account->solde_debit_n1 ?? 0,
+                'credit' => $account->solde_credit_n1 ?? 0
+            ];
+        }
+        
+        // 2. Calculer à partir des écritures
+        $oldAccountIds = AccountMapping::where('new_account_id', $newAccountId)
+            ->where('entreprise_id', $this->entreprise->id)
+            ->pluck('old_account_id')
+            ->toArray();
+        
+        if (!empty($oldAccountIds)) {
+            $ecrituresN1 = GrandLivre::forEntreprise($this->entreprise->id)
+                ->whereIn('old_account_id', $oldAccountIds)
+                ->where('exercice', $anneeN1)
+                ->valides()
+                ->get();
+            
+            $soldeN1['debit'] = $ecrituresN1->sum('debit');
+            $soldeN1['credit'] = $ecrituresN1->sum('credit');
+        }
+        
+        // 3. Vérifier aussi les écritures directes
+        $directEcrituresN1 = GrandLivre::forEntreprise($this->entreprise->id)
+            ->where('new_account_id', $newAccountId)
+            ->where('exercice', $anneeN1)
+            ->valides()
+            ->get();
+        
+        $soldeN1['debit'] += $directEcrituresN1->sum('debit');
+        $soldeN1['credit'] += $directEcrituresN1->sum('credit');
+        
+        return $soldeN1;
+    }
+    
+    private function getOldAccountSoldeN1($oldAccountId)
+    {
+        $anneeN1 = $this->exercice - 1;
+        
+        $ecrituresN1 = GrandLivre::forEntreprise($this->entreprise->id)
+            ->where('old_account_id', $oldAccountId)
+            ->where('exercice', $anneeN1)
+            ->valides()
+            ->get();
+        
+        return [
+            'debit' => $ecrituresN1->sum('debit'),
+            'credit' => $ecrituresN1->sum('credit')
+        ];
+    }
+    
+    private function sortBalances(&$balances)
+    {
+        usort($balances, function ($a, $b) {
+            $field = $this->sortField;
+            $direction = $this->sortDirection === 'asc' ? 1 : -1;
+            
+            if ($field === 'solde') {
+                return $direction * ($a['solde'] <=> $b['solde']);
+            } elseif ($field === 'total_debit') {
+                return $direction * ($a['total_debit'] <=> $b['total_debit']);
+            } elseif ($field === 'total_credit') {
+                return $direction * ($a['total_credit'] <=> $b['total_credit']);
+            } elseif ($field === 'ecritures_count') {
+                return $direction * ($a['ecritures_count'] <=> $b['ecritures_count']);
+            } else {
+                return $direction * strcmp($a['code'], $b['code']);
+            }
+        });
+    }
+    
+    public function sortBy($field)
+    {
+        if ($this->sortField === $field) {
+            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            $this->sortField = $field;
+            $this->sortDirection = 'asc';
+        }
+        
+        $this->sortBalances($this->balances);
+    }
+    
+    public function resetFilters()
+    {
+        $this->reset([
+            'dateDebut',
+            'dateFin',
+            'exercice',
+            'accountId',
+            'search'
+        ]);
+        
+        // Réinitialiser aux valeurs par défaut
+        $this->dateDebut = '2024-01-01';
+        $this->dateFin = '2024-12-31';
+        $this->exercice = now()->year;
+        
+        $this->resetPage();
+        $this->loadBalances();
+    }
+    
+    public function showDetails($balanceId)
+    {
+        $this->selectedBalance = collect($this->balances)->firstWhere('id', $balanceId);
+        
+        if ($this->selectedBalance) {
+            $this->viewMode = 'details';
+            $this->dispatch('scroll-to-details');
+        }
+    }
+    
+    public function backToList()
+    {
+        $this->viewMode = 'table';
+        $this->selectedBalance = null;
+        $this->balanceDetails = [];
+    }
+    
+    public function openGenerateModal()
+    {
+        $this->generateFromDate = $this->dateDebut;
+        $this->generateToDate = $this->dateFin;
+        $this->generateExercice = $this->exercice;
+        $this->showGenerateModal = true;
+        $this->dispatch('open-generate-modal');
+    }
+    
+    public function generateBalances()
+    {
+        $this->validate([
+            'generateType' => 'required|in:old,new,both',
+            'generateFromDate' => 'required|date',
+            'generateToDate' => 'required|date|after_or_equal:generateFromDate',
+            'generateExercice' => 'required|integer',
+        ]);
+        
+        try {
+            // Nettoyer les anciennes balances de la période
+            $this->cleanOldBalances();
+            
+            // Générer les nouvelles balances
+            if ($this->generateType === 'old' || $this->generateType === 'both') {
+                $this->generateOldBalances();
+            }
+            
+            if ($this->generateType === 'new' || $this->generateType === 'both') {
+                $this->generateNewBalances();
+            }
+            
+            $this->showGenerateModal = false;
+            
+            $this->dispatch('notify', [
+                'type' => 'success',
+                'message' => 'Balances générées avec succès !'
+            ]);
+            
+            // Invalider le cache et recharger
+            $this->invalidateCaches();
+            $this->loadBalances();
+            
+        } catch (\Exception $e) {
+            $this->dispatch('notify', [
+                'type' => 'error',
+                'message' => 'Erreur lors de la génération : ' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    private function cleanOldBalances()
+    {
+        // Supprimer les anciennes balances pour la période
+        OldBalance::where('entreprise_id', $this->entreprise->id)
+            ->where('periode', $this->getPeriodeString())
+            ->where('exercice', $this->generateExercice)
+            ->delete();
+            
+        NewBalance::where('entreprise_id', $this->entreprise->id)
+            ->where('periode', $this->getPeriodeString())
+            ->where('exercice', $this->generateExercice)
+            ->delete();
+    }
+    
+    private function generateOldBalances()
+    {
+        $accounts = OldAccount::where('entreprise_id', $this->entreprise->id)->get();
+        
+        foreach ($accounts as $account) {
+            $ecritures = GrandLivre::forEntreprise($this->entreprise->id)
+                ->where('old_account_id', $account->id)
+                ->whereBetween('date_ecriture', [$this->generateFromDate, $this->generateToDate])
+                ->valides()
+                ->get();
+            
+            if ($ecritures->count() > 0) {
+                OldBalance::create([
+                    'entreprise_id' => $this->entreprise->id,
+                    'old_account_id' => $account->id,
+                    'debit' => $ecritures->sum('debit'),
+                    'credit' => $ecritures->sum('credit'),
+                    'solde' => $ecritures->sum('debit') - $ecritures->sum('credit'),
+                    'periode' => $this->getPeriodeString(),
+                    'exercice' => $this->generateExercice,
+                ]);
+            }
+        }
+    }
+    
+    private function generateNewBalances()
+    {
+        $accounts = NewAccount::where('entreprise_id', $this->entreprise->id)
+            ->whereHas('mappings')
+            ->get();
+        
+        foreach ($accounts as $account) {
+            $oldAccountIds = AccountMapping::where('new_account_id', $account->id)
+                ->where('entreprise_id', $this->entreprise->id)
+                ->pluck('old_account_id')
+                ->toArray();
+            
+            if (!empty($oldAccountIds)) {
+                $ecritures = GrandLivre::forEntreprise($this->entreprise->id)
+                    ->whereIn('old_account_id', $oldAccountIds)
+                    ->whereBetween('date_ecriture', [$this->generateFromDate, $this->generateToDate])
+                    ->valides()
+                    ->get();
+                
+                // Ajouter les écritures directes
+                $directEcritures = GrandLivre::forEntreprise($this->entreprise->id)
+                    ->where('new_account_id', $account->id)
+                    ->whereBetween('date_ecriture', [$this->generateFromDate, $this->generateToDate])
+                    ->valides()
+                    ->get();
+                
+                $allEcritures = $ecritures->merge($directEcritures);
+                
+                if ($allEcritures->count() > 0) {
+                    NewBalance::create([
+                        'entreprise_id' => $this->entreprise->id,
+                        'new_account_id' => $account->id,
+                        'debit' => $allEcritures->sum('debit'),
+                        'credit' => $allEcritures->sum('credit'),
+                        'solde' => $allEcritures->sum('debit') - $allEcritures->sum('credit'),
+                        'periode' => $this->getPeriodeString(),
+                        'exercice' => $this->generateExercice,
+                    ]);
+                }
+            }
+        }
+    }
+    
+    private function getPeriodeString(): string
+    {
+        $start = Carbon::parse($this->generateFromDate);
+        $end = Carbon::parse($this->generateToDate);
+        
+        if ($start->format('Y-m-d') === $start->startOfMonth()->format('Y-m-d') && 
+            $end->format('Y-m-d') === $end->endOfMonth()->format('Y-m-d')) {
+            return $start->format('Y-m');
+        }
+        
+        return $start->format('Y-m-d') . '_' . $end->format('Y-m-d');
+    }
+    
+    public function export($format = 'excel')
+    {
+        return redirect()->route('balance.export', [
+            'type' => $this->type,
+            'dateDebut' => $this->dateDebut,
+            'dateFin' => $this->dateFin,
+            'exercice' => $this->exercice,
+            'format' => $format,
+        ]);
+    }
+    
+    public function getAccountsProperty()
+    {
+        return NewAccount::where('entreprise_id', $this->entreprise->id)
+            ->whereHas('mappings')
+            ->orderBy('code')
+            ->get();
+    }
+    
+    private function calculateStats()
+    {
+        $stats = [
+            'total_comptes' => count($this->balances),
+            'total_debit' => 0,
+            'total_credit' => 0,
+            'total_solde' => 0,
+            'total_debit_n1' => 0,
+            'total_credit_n1' => 0,
+            'total_ecritures' => 0,
+            'comptes_crediteurs' => 0,
+            'comptes_debiteurs' => 0,
+        ];
+        
+        foreach ($this->balances as $balance) {
+            $stats['total_debit'] += $balance['total_debit'];
+            $stats['total_credit'] += $balance['total_credit'];
+            $stats['total_solde'] += $balance['solde'];
+            $stats['total_debit_n1'] += $balance['solde_debit_n1'] ?? 0;
+            $stats['total_credit_n1'] += $balance['solde_credit_n1'] ?? 0;
+            $stats['total_ecritures'] += $balance['ecritures_count'] ?? 0;
+            
+            if ($balance['solde'] > 0) {
+                $stats['comptes_debiteurs']++;
+            } elseif ($balance['solde'] < 0) {
+                $stats['comptes_crediteurs']++;
+            }
+        }
+        
+        $this->stats = $stats;
+    }
+    
+    /**
+     * Invalider les caches
+     */
+    protected function invalidateCaches()
+    {
+        $pattern = "balance_data_{$this->entreprise->id}_*";
+        try {
+            Cache::flush($pattern);
+        } catch (\Exception $e) {
+            // Ignorer les erreurs de cache
+        }
+    }
+    
+    public function render()
+    {
+        return view('livewire.balance.index', [
+            'accounts' => $this->accounts,
+        ]);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="p-6 mt-12" x-data="{
+    showGenerateModal: @entangle('showGenerateModal'),
+    showExportOptions: false,
+    viewMode: @entangle('viewMode'),
+    selectedBalance: @entangle('selectedBalance'),
+    stats: @entangle('stats')
+}">
+    <!-- Header -->
+    <div class="mb-6">
+        <div class="flex justify-between items-start">
+            <div>
+                <h3 style="font-size: 12px;" class="text-lg font-semibold text-gray-900">
+                    Balance des comptes SYCEBNL (uniquement mappés)
+                </h3>
+                <p style="font-size: 12px;" class="text-gray-600 mt-1">
+                    Analyse des soldes et mouvements comptables
+                </p>
+            </div>
+            
+            <div class="flex items-center space-x-3">
+                <span style="font-size: 12px;" class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                    {{ $entreprise->nom }}
+                </span>
+                
+                @if($viewMode === 'details' && $selectedBalance)
+                    <button style="font-size: 12px;" @click="viewMode = 'table'; selectedBalance = null"
+                            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 
+                                   flex items-center gap-2 text-sm font-medium">
+                        <i class="fas fa-arrow-left"></i>
+                        Retour à la liste
+                    </button>
+                @endif
+            </div>
+        </div>
+    </div>
+    
+    <!-- Onglets Type -->
+    <div class="mb-6">
+        <div class="border-b border-gray-200">
+            <nav class="flex -mb-px">
+                <!-- Remplacez cette section (~ligne 55) -->
+                <div class="mb-6">
+                    <div class="border-b border-gray-200">
+                        <nav class="flex -mb-px">
+                            <div class="bg-white border rounded-lg p-8">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p style="font-size: 11px;" class="text-sm text-gray-500">Total Écritures</p>
+                                        <p style="font-size: 11px;" class="font-bold text-purple-600 mt-1">
+                                            {{ number_format($stats['total_ecritures'], 0, ',', ' ') }}
+                                        </p>
+                                        <p class="text-xs text-gray-500 mt-1">mouvements</p>
+                                    </div>
+                                    <div style="font-size: 11px;" class="p-2 bg-purple-100 rounded-lg">
+                                        <i class="fas fa-file-invoice text-xl text-purple-600"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </nav>
+                    </div>
+                </div>
+                <button style="font-size: 12px;" wire:click="$set('type', 'old')"
+                        :class="{'border-green-500 text-green-600': '{{ $type }}' === 'old',
+                                 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': '{{ $type }}' !== 'old'}"
+                        class="py-3 px-4 font-medium text-sm border-b-2 flex items-center gap-2">
+                    <i class="fas fa-database"></i>
+                    Balance des comptes de SYCEBNL
+                </button>
+            </nav>
+        </div>
+    </div>
+    
+    <!-- Filtres et Actions -->
+    @if($viewMode === 'table')
+    <div class="bg-white rounded-lg shadow border p-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Période -->
+            <div>
+                <label style="font-size: 12px;" class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="far fa-calendar mr-1"></i>
+                    Période
+                </label>
+                <div class="flex gap-2">
+                    <input style="font-size: 12px;" type="date" 
+                           wire:model.live="dateDebut"
+                           class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    <input style="font-size: 12px;" type="date" 
+                           wire:model.live="dateFin"
+                           class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+            </div>
+            
+            <!-- Compte spécifique -->
+            <div>
+                <label style="font-size: 12px;" class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-filter mr-1"></i>
+                    Compte spécifique
+                </label>
+                <select style="font-size: 12px;" wire:model.live="accountId"
+                        class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    <option value="">Tous les comptes</option>
+                    @foreach($accounts as $account)
+                        <option value="{{ $account->id }}">
+                            {{ $account->code }} - {{ Str::limit($account->intitule, 20) }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            
+            <!-- Actions -->
+            <div class="flex items-end gap-2">
+                <div class="flex-1 space-y-2">
+                    <button style="font-size: 12px;" wire:click="resetFilters"
+                            class="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 
+                                   flex items-center justify-center gap-2 text-sm">
+                        <i class="fas fa-redo"></i>
+                        Réinitialiser
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Résumé filtres actifs -->
+        <div class="mt-4 flex flex-wrap gap-2">
+            @if($dateDebut && $dateFin)
+                <span style="font-size: 12px;" class="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs">
+                    {{ \Carbon\Carbon::parse($dateDebut)->format('d/m/Y') }} → {{ \Carbon\Carbon::parse($dateFin)->format('d/m/Y') }}
+                </span>
+            @endif
+            
+            @if($accountId && $selectedAccount = ($accounts->firstWhere('id', $accountId)))
+                <span style="font-size: 12px;" class="inline-flex items-center px-3 py-1 rounded-full bg-green-100 text-green-800 text-xs">
+                    Compte: {{ $selectedAccount->code }}
+                    <button wire:click="$set('accountId', '')" class="ml-2">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </span>
+            @endif
+        </div>
+    </div>
+    
+    <!-- Table des balances -->
+    <div class="bg-white rounded-lg shadow border overflow-hidden">
+        <div class="px-6 py-2 border-b bg-gray-50">
+            <div class="flex justify-between items-center">
+                <h3 style="font-size: 12px;" class="text-lg font-semibold text-gray-900">
+                    Balance {{ $type === 'old' ? 'des comptes entité' : 'des comptes SYCEBNL' }}
+                </h3>
+                <div class="flex items-center gap-2">
+                    <span style="font-size: 12px;" class="text-sm text-gray-600">Trier par :</span>
+                    <select style="font-size: 12px;" wire:model="sortField" 
+                            wire:change="sortBy($event.target.value)"
+                            class="text-sm border rounded-lg p-2">
+                        <option value="code">Code compte</option>
+                        <option value="solde">Solde</option>
+                        <option value="total_debit">Total débit</option>
+                        <option value="total_credit">Total crédit</option>
+                    </select>
+                    <button style="font-size: 12px;" wire:click="sortDirection = '{{ $sortDirection === 'asc' ? 'desc' : 'asc' }}'; sortBy('{{ $sortField }}')"
+                            class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-arrow-{{ $sortDirection === 'asc' ? 'down' : 'up' }}"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th style="font-size: 11px;" class="px-6 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Code SYCEBNL
+                        </th>
+                        <th style="font-size: 11px;" class="px-6 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Libellé
+                        </th>
+                        <th style="font-size: 11px;" class="px-6 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Total Débit
+                        </th>
+                        <th style="font-size: 11px;" class="px-6 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Total Crédit
+                        </th>
+                        <th style="font-size: 11px;" class="px-6 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Solde
+                        </th>
+                        <th style="font-size: 11px;" class="px-6 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Mouvements
+                        </th>
+                        <th style="font-size: 11px;" class="px-6 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                        </th>
+                    </tr>
+                </thead>
+               <tbody class="bg-white divide-y divide-gray-200">
+                    @forelse($balances as $balance)
+                        @php
+                            $isDebiteur = $balance['solde'] > 0;
+                            $isCrediteur = $balance['solde'] < 0;
+                            $isEquilibre = $balance['solde'] == 0;
+                            
+                            // Utilisez des variables sécurisées
+                            $oldAccounts = $balance['old_accounts'] ?? [];
+                            $oldAccountsCount = count($oldAccounts);
+                            $ecrituresCount = $balance['ecritures_count'] ?? 0;
+                        @endphp
+                        
+                        <tr class="hover:bg-gray-50 transition-colors duration-150">
+                            <!-- Code compte SYCEBNL -->
+                            <td class="px-6 py-1.5 whitespace-nowrap">
+                                <div style="font-size: 11px;" class="font-mono font-bold text-green-700">
+                                    {{ $balance['code'] ?? '' }}
+                                </div>
+                            </td>
+                            
+                            <!-- Libellé compte SYCEBNL -->
+                            <td class="px-6 py-1.5">
+                                <div style="font-size: 11px;" class="text-sm text-gray-900 font-medium">
+                                    {{ Str::limit($balance['intitule'] ?? '', 30) }}
+                                </div>
+                                @if(($balance['account'] ?? null) && ($balance['account']->parent ?? null))
+                                    <div style="font-size: 9px;" class="text-blue-600 mt-1">
+                                        <i class="fas fa-level-up-alt"></i> 
+                                        Parent: {{ $balance['account']->parent->code ?? '' }}
+                                    </div>
+                                @endif
+                            </td>
+                            
+                            <!-- Total débit -->
+                            <td class="px-6 py-1.5 whitespace-nowrap">
+                                <div style="font-size: 11px;" class="text-sm text-red-600 font-medium">
+                                    {{ number_format($balance['total_debit'] ?? 0, 0, ',', ' ') }} FCFA
+                                </div>
+                            </td>
+                            
+                            <!-- Total crédit -->
+                            <td class="px-6 py-1.5 whitespace-nowrap">
+                                <div style="font-size: 11px;" class="text-sm text-green-600 font-medium">
+                                    {{ number_format($balance['total_credit'] ?? 0, 0, ',', ' ') }} FCFA
+                                </div>
+                            </td>
+                            
+                            <!-- Solde -->
+                            <td class="px-6 py-1.5 whitespace-nowrap">
+                                <div class="flex items-center gap-2">
+                                    <div style="font-size: 11px;" class="text-sm font-bold 
+                                        {{ $isDebiteur ? 'text-red-600' : ($isCrediteur ? 'text-green-600' : 'text-gray-600') }}">
+                                        {{ number_format(abs($balance['solde'] ?? 0), 0, ',', ' ') }} FCFA
+                                    </div>
+                                    <div style="font-size: 11px;" class="px-2 py-1 rounded text-xs font-medium
+                                        {{ $isDebiteur ? 'bg-red-100 text-red-800' : 
+                                           ($isCrediteur ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800') }}">
+                                        {{ $isDebiteur ? 'Débiteur' : ($isCrediteur ? 'Créditeur' : 'Équilibré') }}
+                                    </div>
+                                </div>
+                            </td>
+                            
+                            <!-- Mouvements -->
+                            <td class="px-6 py-1.5 whitespace-nowrap">
+                                <div style="font-size: 11px;" class="text-sm text-gray-900">
+                                    {{ $ecrituresCount }} écriture(s)
+                                </div>
+                            </td>
+                            
+                            <!-- Actions -->
+                            <td class="px-6 py-1.5 whitespace-nowrap text-sm font-medium">
+                                <button style="font-size: 11px;" wire:click="showDetails({{ $balance['id'] ?? 0 }})"
+                                        class="text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                                    <i class="fas fa-eye"></i>
+                                    Détails
+                                </button>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="10" class="px-6 py-12 text-center">
+                                <div class="text-gray-400">
+                                    <i class="fas fa-scale-balanced text-4xl mb-4"></i>
+                                    <p class="text-lg font-medium mb-2">Aucune balance trouvée</p>
+                                    <p class="text-sm">Aucune écriture comptable dans la période sélectionnée</p>
+                                    <button wire:click="resetFilters"
+                                            class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                        Réinitialiser les filtres
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+                
+                <!-- Totaux -->
+                @if(count($balances) > 0)
+                <!-- Dans les totaux (~ligne 450) -->
+                <tfoot class="bg-gray-50 font-bold">
+                    <tr>
+                        <td style="font-size: 11px;" colspan="2" class="px-6 py-1.5 text-right text-sm text-gray-700">
+                            TOTAUX :
+                        </td>
+                        <!-- Totaux N-1 -->
+                        {{-- <td style="font-size: 11px;" class="px-6 py-1.5 whitespace-nowrap text-sm text-gray-600">
+                            @php
+                                $totalDebitN1 = collect($balances)->sum('solde_debit_n1');
+                                $totalCreditN1 = collect($balances)->sum('solde_credit_n1');
+                            @endphp
+                            {{ number_format($totalDebitN1, 0, ',', ' ') }} FCFA
+                        </td>
+                        <td style="font-size: 11px;" class="px-6 py-1.5 whitespace-nowrap text-sm text-gray-600">
+                            {{ number_format($totalCreditN1, 0, ',', ' ') }} FCFA
+                        </td> --}}
+                        <!-- Totaux actuels -->
+                        <td style="font-size: 11px;" class="px-6 py-1.5 whitespace-nowrap text-sm text-red-600">
+                            {{ number_format($stats['total_debit'], 0, ',', ' ') }} FCFA
+                        </td>
+                        <td style="font-size: 11px;" class="px-6 py-1.5 whitespace-nowrap text-sm text-green-600">
+                            {{ number_format($stats['total_credit'], 0, ',', ' ') }} FCFA
+                        </td>
+                        <td style="font-size: 11px;" class="px-6 py-1.5 whitespace-nowrap text-sm 
+                            {{ $stats['total_solde'] > 0 ? 'text-red-600' : 'text-green-600' }}">
+                            {{ number_format(abs($stats['total_solde']), 0, ',', ' ') }} FCFA
+                        </td>
+                        <td style="font-size: 11px;" colspan="4" class="px-6 py-1.5 text-sm text-gray-600">
+                            {{ $stats['total_solde'] > 0 ? 'Débiteur' : 'Créditeur' }}
+                        </td>
+                    </tr>
+                </tfoot>
+                @endif
+            </table>
+        </div>
+    </div>
+    
+    <!-- Pagination -->
+    <div class="mt-6">
+        @if(count($balances) > 50)
+            <!-- Implémenter la pagination si nécessaire -->
+        @endif
+    </div>
+    @endif
+    
+    <!-- Vue détaillée d'une balance -->
+    @if($viewMode === 'details' && $selectedBalance)
+    <div id="balance-details" class="bg-white rounded-lg shadow border overflow-hidden mb-6">
+        <!-- En-tête -->
+        <div class="px-6 py-4 border-b bg-gray-50">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h2 style="font-size: 11px;" class="text-xl font-bold text-gray-900">
+                        <i class="fas fa-file-invoice mr-2 text-blue-600"></i>
+                        Détails du compte {{ $selectedBalance['code'] }}
+                    </h2>
+                    <p style="font-size: 11px;" class="text-gray-600 mt-1">
+                        {{ $selectedBalance['intitule'] }}
+                        @if($type === 'new')
+                            <span class="text-sm text-gray-500 ml-2">
+                                ({{ $selectedBalance['old_accounts_count'] ?? 0 }} ancien(s) compte(s))
+                            </span>
+                        @endif
+                    </p>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <!-- Statut solde -->
+                    <div class="px-4 py-2 rounded-lg 
+                        {{ $selectedBalance['solde'] > 0 ? 'bg-red-100 text-red-800' : 
+                           ($selectedBalance['solde'] < 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800') }}">
+                        <div style="font-size: 11px;" class="text-sm font-medium">
+                            Solde : {{ number_format(abs($selectedBalance['solde']), 0, ',', ' ') }} FCFA
+                        </div>
+                        <div style="font-size: 11px;" class="text-xs">
+                            {{ $selectedBalance['solde'] > 0 ? 'Débiteur' : 
+                               ($selectedBalance['solde'] < 0 ? 'Créditeur' : 'Équilibré') }}
+                        </div>
+                    </div>
+                    
+                    <!-- Bouton retour -->
+                    <button style="font-size: 11px;" wire:click="backToList"
+                            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 
+                                   flex items-center gap-2">
+                        <i class="fas fa-arrow-left"></i>
+                        Retour
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Corps -->
+        <div class="p-6">
+            <!-- Résumé -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <!-- Total débit -->
+                <div class="bg-white border rounded-lg p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p style="font-size: 11px;" class="text-sm text-gray-500">Total Débit</p>
+                            <p style="font-size: 11px;" class="font-bold text-red-600 mt-1">
+                                {{ number_format($selectedBalance['total_debit'], 0, ',', ' ') }} FCFA
+                            </p>
+                        </div>
+                        <div style="font-size: 11px;" class="p-2 bg-red-100 rounded-lg">
+                            <i class="fas fa-arrow-down text-xl text-red-600"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Total crédit -->
+                <div class="bg-white border rounded-lg p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p style="font-size: 11px;" class="text-sm text-gray-500">Total Crédit</p>
+                            <p style="font-size: 11px;" class="font-bold text-green-600 mt-1">
+                                {{ number_format($selectedBalance['total_credit'], 0, ',', ' ') }} FCFA
+                            </p>
+                        </div>
+                        <div style="font-size: 11px;" class="p-2 bg-green-100 rounded-lg">
+                            <i class="fas fa-arrow-up text-xl text-green-600"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Nombre écritures -->
+                <div class="bg-white border rounded-lg p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p style="font-size: 11px;" class="text-sm text-gray-500">Mouvements</p>
+                            <p style="font-size: 11px;" class="font-bold text-blue-600 mt-1">
+                                {{ $selectedBalance['ecritures_count'] }}
+                            </p>
+                            <p class="text-xs text-gray-500 mt-1">écritures</p>
+                        </div>
+                        <div style="font-size: 11px;" class="p-2 bg-blue-100 rounded-lg">
+                            <i class="fas fa-exchange-alt text-xl text-blue-600"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                
+                
+                <!-- Période -->
+                <div class="bg-white border rounded-lg p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p style="font-size: 11px;" class="text-sm text-gray-500">Période analysée</p>
+                            <p style="font-size: 11px;" class="text-sm font-bold text-gray-900 mt-1">
+                                {{ \Carbon\Carbon::parse($dateDebut)->format('d/m/Y') }}
+                            </p>
+                            <p style="font-size: 11px;" class="text-sm font-bold text-gray-900">
+                                {{ \Carbon\Carbon::parse($dateFin)->format('d/m/Y') }}
+                            </p>
+                        </div>
+                        <div style="font-size: 11px;" class="p-2 bg-yellow-100 rounded-lg">
+                            <i class="far fa-calendar text-xl text-yellow-600"></i>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Dans les totaux (~ligne 450) -->
+                <tfoot class="bg-gray-50 font-bold">
+    <tr>
+        <td style="font-size: 11px;" colspan="2" class="px-6 py-1.5 text-right text-sm text-gray-700">
+            TOTAUX :
+        </td>
+        <!-- Totaux N-1 -->
+        <td style="font-size: 11px;" class="px-6 py-1.5 whitespace-nowrap text-sm text-gray-600">
+            @php
+                $totalDebitN1 = collect($balances)->sum('solde_debit_n1');
+                $totalCreditN1 = collect($balances)->sum('solde_credit_n1');
+            @endphp
+            {{ number_format($totalDebitN1, 0, ',', ' ') }} FCFA
+        </td>
+        <td style="font-size: 11px;" class="px-6 py-1.5 whitespace-nowrap text-sm text-gray-600">
+            {{ number_format($totalCreditN1, 0, ',', ' ') }} FCFA
+        </td>
+        <!-- Totaux actuels -->
+        <td style="font-size: 11px;" class="px-6 py-1.5 whitespace-nowrap text-sm text-red-600">
+            {{ number_format($stats['total_debit'], 0, ',', ' ') }} FCFA
+        </td>
+        <td style="font-size: 11px;" class="px-6 py-1.5 whitespace-nowrap text-sm text-green-600">
+            {{ number_format($stats['total_credit'], 0, ',', ' ') }} FCFA
+        </td>
+        <td style="font-size: 11px;" class="px-6 py-1.5 whitespace-nowrap text-sm 
+            {{ $stats['total_solde'] > 0 ? 'text-red-600' : 'text-green-600' }}">
+            {{ number_format(abs($stats['total_solde']), 0, ',', ' ') }} FCFA
+        </td>
+        <td style="font-size: 11px;" colspan="{{ $type === 'old' ? '3' : '4' }}" class="px-6 py-1.5 text-sm text-gray-600">
+            {{ $stats['total_solde'] > 0 ? 'Débiteur' : 'Créditeur' }}
+        </td>
+    </tr>
+</tfoot>
+            </div>
+            
+            <!-- Anciens comptes (pour SYCEBNL) -->
+            @if($type === 'new' && isset($selectedBalance['old_accounts']))
+            <div class="mb-8">
+                <h3 style="font-size: 11px;" class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                    <i class="fas fa-sitemap mr-2 text-orange-600"></i>
+                    Anciens comptes mappés
+                </h3>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Code
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Intitulé
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Solde Débit N-1
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Solde Crédit N-1
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Débit
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Crédit
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Solde
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Mouvements
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach($selectedBalance['old_accounts'] as $oldAccount)
+                                <tr class="hover:bg-gray-50">
+                                    <td style="font-size: 11px;" class="px-6 py-4 whitespace-nowrap">
+                                        <div class="font-mono font-bold text-orange-700">
+                                            {{ $oldAccount['code'] }}
+                                        </div>
+                                    </td>
+                                    <td style="font-size: 11px;" class="px-6 py-4">
+                                        <div class="text-sm text-gray-900">
+                                            {{ Str::limit($oldAccount['intitule'], 30) }}
+                                        </div>
+                                    </td>
+                                    <!-- Solde Débit N-1 -->
+                                    <td class="px-6 py-1.5 whitespace-nowrap">
+                                        <div style="font-size: 11px;" class="text-sm text-gray-700">
+                                            {{ number_format($oldAccount['solde_debit_n1'] ?? 0, 0, ',', ' ') }} FCFA
+                                        </div>
+                                    </td>
+                                    
+                                    <!-- Solde Crédit N-1 -->
+                                    <td class="px-6 py-1.5 whitespace-nowrap">
+                                        <div style="font-size: 11px;" class="text-sm text-gray-700">
+                                            {{ number_format($oldAccount['solde_credit_n1'] ?? 0, 0, ',', ' ') }} FCFA
+                                        </div>
+                                    </td>
+                                    <td style="font-size: 11px;" class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm text-red-600">
+                                            {{ number_format($oldAccount['debit'], 0, ',', ' ') }} FCFA
+                                        </div>
+                                    </td>
+                                    <td style="font-size: 11px;" class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm text-green-600">
+                                            {{ number_format($oldAccount['credit'], 0, ',', ' ') }} FCFA
+                                        </div>
+                                    </td>
+                                    <td style="font-size: 11px;" class="px-6 py-4 whitespace-nowrap">
+                                        @php
+                                            $solde = $oldAccount['debit'] - $oldAccount['credit'];
+                                        @endphp
+                                        <div class="text-sm font-bold 
+                                            {{ $solde > 0 ? 'text-red-600' : 'text-green-600' }}">
+                                            {{ number_format(abs($solde), 0, ',', ' ') }} FCFA
+                                        </div>
+                                    </td>
+                                    <td style="font-size: 11px;" class="px-6 py-4 whitespace-nowrap">
+                                        <div class="text-sm text-gray-900">
+                                            {{ $oldAccount['count'] }} écriture(s)
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            @endif
+            
+            <!-- Tableau des écritures -->
+            <div>
+                <h3 style="font-size: 11px;" class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                    <i class="fas fa-list-alt mr-2 text-blue-600"></i>
+                    Écritures détaillées
+                </h3>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Date
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Journal
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Pièce
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Libellé
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Débit
+                                </th>
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Crédit
+                                </th>
+                                @if($type === 'new')
+                                <th style="font-size: 11px;" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Ancien compte
+                                </th>
+                                @endif
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach($selectedBalance['ecritures'] as $ecriture)
+                                <tr class="hover:bg-gray-50">
+                                    <td style="font-size: 11px;" class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        {{ $ecriture->date_ecriture->format('d/m/Y') }}
+                                    </td>
+                                    <td style="font-size: 11px;" class="px-6 py-4 whitespace-nowrap">
+                                        @if($ecriture->journal_code)
+                                            <span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                                                {{ $ecriture->journal_code }}
+                                            </span>
+                                        @else
+                                            <span class="text-gray-400 text-xs">-</span>
+                                        @endif
+                                    </td>
+                                    <td style="font-size: 11px;" class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        @if($ecriture->piece)
+                                            <span class="font-mono">{{ $ecriture->piece }}</span>
+                                        @else
+                                            <span class="text-gray-400">-</span>
+                                        @endif
+                                    </td>
+                                    <td style="font-size: 11px;" class="px-6 py-4 text-sm text-gray-900">
+                                        {{ $ecriture->libelle ?? '-' }}
+                                    </td>
+                                    <td style="font-size: 11px;" class="px-6 py-4 whitespace-nowrap text-sm text-red-600">
+                                        @if($ecriture->debit > 0)
+                                            {{ number_format($ecriture->debit, 0, ',', ' ') }} FCFA
+                                        @else
+                                            <span class="text-gray-400">-</span>
+                                        @endif
+                                    </td>
+                                    <td style="font-size: 11px;" class="px-6 py-4 whitespace-nowrap text-sm text-green-600">
+                                        @if($ecriture->credit > 0)
+                                            {{ number_format($ecriture->credit, 0, ',', ' ') }} FCFA
+                                        @else
+                                            <span class="text-gray-400">-</span>
+                                        @endif
+                                    </td>
+                                    @if($type === 'new')
+                                    <td style="font-size: 11px;" class="px-6 py-4 whitespace-nowrap">
+                                        <div class="flex items-center">
+                                            <span class="font-mono text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                                                {{ $ecriture->oldAccount->code ?? 'N/A' }}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    @endif
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
+    <!-- Modal de génération -->
+    <div x-show="showGenerateModal" 
+         x-cloak
+         x-transition.opacity
+         class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl">
+            <div class="px-6 py-4 border-b flex justify-between items-center">
+                <h3 class="text-lg font-semibold text-gray-900">
+                    <i class="fas fa-calculator mr-2 text-purple-600"></i>
+                    Générer des balances persistantes
+                </h3>
+                <button @click="showGenerateModal = false" 
+                        class="text-gray-400 hover:text-gray-500">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="p-6">
+                <form wire:submit.prevent="generateBalances">
+                    <!-- Type de balances -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-3">
+                            <i class="fas fa-cog mr-2"></i>
+                            Type de balances à générer
+                        </label>
+                        <div class="grid grid-cols-3 gap-4">
+                            <label class="relative">
+                                <input type="radio" 
+                                       wire:model="generateType"
+                                       value="old"
+                                       class="sr-only peer">
+                                <div class="flex flex-col items-center justify-center p-4 border-2 rounded-lg cursor-pointer
+                                           peer-checked:border-blue-500 peer-checked:bg-blue-50 hover:bg-gray-50">
+                                    <i class="fas fa-database text-3xl text-orange-500 mb-2"></i>
+                                    <span class="font-medium">Anciens comptes</span>
+                                    <span class="text-xs text-gray-500 mt-1">Comptes entité</span>
+                                </div>
+                            </label>
+                            
+                            <label class="relative">
+                                <input type="radio" 
+                                       wire:model="generateType"
+                                       value="new"
+                                       class="sr-only peer">
+                                <div class="flex flex-col items-center justify-center p-4 border-2 rounded-lg cursor-pointer
+                                           peer-checked:border-green-500 peer-checked:bg-green-50 hover:bg-gray-50">
+                                    <i class="fas fa-database text-3xl text-green-500 mb-2"></i>
+                                    <span class="font-medium">Nouveaux comptes</span>
+                                    <span class="text-xs text-gray-500 mt-1">Comptes SYCEBNL</span>
+                                </div>
+                            </label>
+                            
+                            <label class="relative">
+                                <input type="radio" 
+                                       wire:model="generateType"
+                                       value="both"
+                                       class="sr-only peer">
+                                <div class="flex flex-col items-center justify-center p-4 border-2 rounded-lg cursor-pointer
+                                           peer-checked:border-purple-500 peer-checked:bg-purple-50 hover:bg-gray-50">
+                                    <i class="fas fa-layer-group text-3xl text-purple-500 mb-2"></i>
+                                    <span class="font-medium">Les deux</span>
+                                    <span class="text-xs text-gray-500 mt-1">Tous les comptes</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Période -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                <i class="far fa-calendar mr-1"></i>
+                                Date de début
+                            </label>
+                            <input type="date" 
+                                   wire:model="generateFromDate"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                <i class="far fa-calendar mr-1"></i>
+                                Date de fin
+                            </label>
+                            <input type="date" 
+                                   wire:model="generateToDate"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                <i class="fas fa-calendar-alt mr-1"></i>
+                                Exercice
+                            </label>
+                            <input type="number" 
+                                   wire:model="generateExercice"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   min="2000" max="{{ date('Y') + 5 }}">
+                        </div>
+                    </div>
+                    
+                    <!-- Informations -->
+                    <div class="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <h4 class="text-sm font-medium text-yellow-800 mb-2 flex items-center">
+                            <i class="fas fa-info-circle mr-2"></i>
+                            Information importante
+                        </h4>
+                        <p class="text-sm text-yellow-700">
+                            La génération créera des enregistrements persistants dans la base de données.
+                            Ces balances pourront être consultées et exportées ultérieurement sans recalcul.
+                        </p>
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="flex justify-end space-x-3 pt-4 border-t">
+                        <button type="button"
+                                @click="showGenerateModal = false"
+                                class="px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg transition">
+                            Annuler
+                        </button>
+                        
+                        <button type="submit"
+                                class="px-4 py-2 bg-purple-600 text-white hover:bg-purple-700 rounded-lg transition shadow-sm flex items-center">
+                            <i class="fas fa-calculator mr-2"></i>
+                            Générer les balances
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    @push('scripts')
+    <script>
+        // Scroll vers les détails
+        document.addEventListener('livewire:initialized', () => {
+            Livewire.on('scroll-to-details', () => {
+                const element = document.getElementById('balance-details');
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+            
+            Livewire.on('open-generate-modal', () => {
+                document.querySelector('[x-show="showGenerateModal"]').style.display = 'flex';
+            });
+        });
+        
+        // Fermer le modal avec ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                Alpine.store('showGenerateModal', false);
+            }
+        });
+    </script>
+    
+    <style>
+        /* Styles pour les montants */
+        .amount-debit { color: #dc2626; }
+        .amount-credit { color: #16a34a; }
+        
+        /* Animation pour la génération */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .generating {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+    @endpush
+</div>
