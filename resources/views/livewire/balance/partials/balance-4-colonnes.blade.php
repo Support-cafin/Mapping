@@ -3,7 +3,7 @@
         <div class="flex justify-between items-center">
             <h3 style="font-size: 13px;" class="font-semibold text-gray-900">
                 Balance à 4 colonnes  <!-- Boutons d'export -->
-            <button wire:click="exportExcel" 
+            <button wire:click="exportExcel"
                     class="px-4 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 flex items-center gap-2">
                 <i class="fas fa-file-excel"></i>
                 Export Excel
@@ -14,7 +14,7 @@
             </div>
         </div>
     </div>
-    
+
     <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
@@ -53,7 +53,7 @@
                     <th></th>
                 </tr>
             </thead>
-            
+
             <tbody class="bg-white divide-y divide-gray-200">
                 @forelse($balances as $balance)
                     @php
@@ -61,7 +61,7 @@
                         $isDebiteur = $solde > 0;
                         $soldeAbsolu = abs($solde);
                     @endphp
-                    
+
                     @if($balance['total_debit'] !== 0 || $balance['total_credit'] !== 0 || $soldeAbsolu !== 0)
                     <tr class="hover:bg-gray-50">
                         <td class="px-6 py-2 whitespace-nowrap border-x">
@@ -69,7 +69,7 @@
                                 {{ $balance['code'] }}
                             </div>
                         </td>
-                        
+
                         <td class="px-6 py-2 border-x">
                             <div style="font-size: 13px;" class="font-medium text-gray-900">
                                 {{ Str::limit($balance['intitule'], 30) }}
@@ -80,7 +80,7 @@
                                 </div>
                             @endif
                         </td>
-                        
+
                         <!-- Mouvement Débit -->
                         <td class="px-6 py-2 whitespace-nowrap text-right border-x">
                             @if($balance['total_debit'] > 0)
@@ -91,7 +91,7 @@
                                 <div style="font-size: 13px;" class="text-gray-400">-</div>
                             @endif
                         </td>
-                        
+
                         <!-- Mouvement Crédit -->
                         <td class="px-6 py-2 whitespace-nowrap text-right border-x">
                             @if($balance['total_credit'] > 0)
@@ -102,7 +102,7 @@
                                 <div style="font-size: 13px;" class="text-gray-400">-</div>
                             @endif
                         </td>
-                        
+
                         <!-- Solde Débiteur -->
                         <td class="px-6 py-2 whitespace-nowrap text-right border-x">
                             @if($isDebiteur)
@@ -113,7 +113,7 @@
                                 <div style="font-size: 13px;" class="text-gray-400">-</div>
                             @endif
                         </td>
-                        
+
                         <!-- Solde Créditeur -->
                         <td class="px-6 py-2 whitespace-nowrap text-right border-x">
                             @if(!$isDebiteur && $soldeAbsolu > 0)
@@ -124,7 +124,7 @@
                                 <div style="font-size: 13px;" class="text-gray-400">-</div>
                             @endif
                         </td>
-                        
+
                         <!-- Actions -->
                         <td class="px-6 py-2 whitespace-nowrap border-x">
                             @if($balance['ecritures_count'] > 0)
@@ -153,13 +153,13 @@
                     </tr>
                 @endforelse
             </tbody>
-            
+
             <!-- Totaux -->
             @if(count($balances) > 0)
                 @php
                     $totalSoldeDebiteur = 0;
                     $totalSoldeCrediteur = 0;
-                    
+
                     foreach($balances as $balance) {
                         $solde = $balance['solde'];
                         if($solde > 0) {
@@ -169,7 +169,7 @@
                         }
                     }
                 @endphp
-                
+
                 <tfoot class="bg-gray-50 font-bold border-t">
                     <tr>
                         <td colspan="2" style="font-size: 13px;" class="px-6 py-2 text-right text-gray-700 border-x">

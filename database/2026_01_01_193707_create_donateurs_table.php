@@ -24,17 +24,17 @@ return new class extends Migration
             $table->boolean('signature_representant')->default(false);
             $table->text('notes')->nullable();
             $table->enum('statut', ['enregistré', 'validé', 'comptabilisé', 'annulé'])->default('enregistré');
-            
+
             // Référence au plan comptable
-            $table->foreignId('account_mapping')->nullable()->constrained('old_account')->onDelete('set null');
-            
+            $table->foreignId('account_mapping')->nullable()->constrained('old_accounts')->onDelete('set null');
+
             // Auditing
             $table->foreignId('created_by')->nullable()->constrained('users')->onDelete('set null');
             $table->foreignId('updated_by')->nullable()->constrained('users')->onDelete('set null');
-            
+
             $table->timestamps();
             $table->softDeletes();
-            
+
             // Index
             $table->index('date');
             $table->index('denomination');

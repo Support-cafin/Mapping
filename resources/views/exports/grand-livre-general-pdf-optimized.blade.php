@@ -111,19 +111,19 @@
             @endif
         </p>
     </div>
-    
+
     <div class="info">
         <strong>{{ $count }} comptes</strong> - Édition: {{ $dateGeneration }}
         @if(!empty($filters['journalCode']))
             - Journal: {{ $filters['journalCode'] }}
         @endif
     </div>
-    
+
     @forelse($comptes as $compte)
         <div class="compte-header">
             <h3>Compte {{ $compte['code'] }} - {{ $compte['intitule'] }}</h3>
         </div>
-        
+
         <table>
             <thead>
                 <tr>
@@ -150,7 +150,7 @@
                 </tr>
             </tbody>
         </table>
-        
+
         @if(!$loop->last)
             <div style="margin-bottom: 10px;"></div>
         @endif
@@ -159,7 +159,7 @@
             Aucun compte trouvé
         </div>
     @endforelse
-    
+
     <!-- Totaux généraux -->
     <div class="total-general">
         <table style="width: 100%; background-color: transparent;">
@@ -177,7 +177,7 @@
             </tr>
         </table>
     </div>
-    
+
     <div class="footer">
         Document généré le {{ $dateGeneration }} - Grand Livre Général
     </div>

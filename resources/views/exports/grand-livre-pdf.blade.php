@@ -22,12 +22,12 @@
     <div class="header">
         <h1>GRAND LIVRE COMPTABLE</h1>
         <div class="subtitle">{{ $entreprise->nom }} ({{ $entreprise->code }})</div>
-        <div>Période: {{ isset($filters['dateDebut']) ? date('d/m/Y', strtotime($filters['dateDebut'])) : date('01/01/Y') }} 
+        <div>Période: {{ isset($filters['dateDebut']) ? date('d/m/Y', strtotime($filters['dateDebut'])) : date('01/01/Y') }}
              au {{ isset($filters['dateFin']) ? date('d/m/Y', strtotime($filters['dateFin'])) : date('31/12/Y') }}</div>
         <div>Exercice: {{ $filters['exercice'] ?? date('Y') }}</div>
         <div>Édité le: {{ date('d/m/Y H:i') }}</div>
     </div>
-    
+
     @if(!empty($filters))
     <div class="filters">
         <strong>Filtres appliqués:</strong>
@@ -39,7 +39,7 @@
         @endif
     </div>
     @endif
-    
+
     <table>
         <thead>
             <tr>
@@ -82,7 +82,7 @@
             </tr>
         </tfoot>
     </table>
-    
+
     <div class="footer">
         Page 1/1 • Système de Mapping Comptable • {{ config('app.name') }}
     </div>

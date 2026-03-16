@@ -600,7 +600,7 @@
             color: #4361ee;
             cursor: pointer;
         }
-        
+
         .btn-check:checked + .btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -674,13 +674,13 @@
         <div class="glass-card rounded-4 p-3 mb-3 animate-slide-in" style="animation-delay: 0.2s;">
             <div class="position-relative">
                 <i class="fas fa-search position-absolute top-50 start-0 translate-middle-y ms-3 text-muted"></i>
-                <input type="text" 
-                       wire:model.live.debounce.300ms="search" 
-                       class="form-control search-premium ps-5 pe-5" 
+                <input type="text"
+                       wire:model.live.debounce.300ms="search"
+                       class="form-control search-premium ps-5 pe-5"
                        placeholder="🔍 Rechercher un exercice par libellé..."
                        style="font-size: 0.95rem;">
                 @if($search)
-                    <button wire:click="$set('search', '')" 
+                    <button wire:click="$set('search', '')"
                             class="btn position-absolute top-50 end-0 translate-middle-y me-2 border-0 p-0"
                             style="width: 30px; height: 30px;">
                         <i class="fas fa-times-circle text-muted"></i>
@@ -699,9 +699,9 @@
                         <label for="perPage" class="text-muted mb-0 fw-medium" style="font-size: 0.9rem; white-space: nowrap;">
                             Afficher :
                         </label>
-                        <select wire:model.live="perPage" 
+                        <select wire:model.live="perPage"
                                 id="perPage"
-                                class="form-select border-2" 
+                                class="form-select border-2"
                                 style="width: 85px; border-color: #dee2e6; border-radius: 10px; font-weight: 500; font-size: 0.9rem; padding: 0.5rem 0.75rem;">
                             <option value="10">10</option>
                             <option value="25">25</option>
@@ -709,20 +709,20 @@
                             <option value="100">100</option>
                         </select>
                     </div>
-                    
+
                     <!-- Réinitialiser -->
-                    <button wire:click="resetFilters" 
+                    <button wire:click="resetFilters"
                             class="btn btn-outline-secondary d-flex align-items-center gap-2"
                             style="border-radius: 10px; border-width: 2px; font-weight: 500; padding: 0.5rem 1.25rem; white-space: nowrap;">
                         <i class="fas fa-redo-alt" style="font-size: 0.85rem;"></i>
                         <span>Réinitialiser</span>
                     </button>
                 </div>
-                
+
                 <!-- Groupe droite: Onglets de statut -->
                 <div>
                     <div class="btn-group" role="group" style="box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-radius: 12px; overflow: hidden;">
-                        <button @click="activeTab = 'all'" 
+                        <button @click="activeTab = 'all'"
                                 type="button"
                                 :class="activeTab === 'all' ? 'btn-primary' : 'btn-outline-secondary'"
                                 class="btn btn-sm px-4 d-flex align-items-center gap-2"
@@ -730,7 +730,7 @@
                             <i class="fas fa-th-list" style="font-size: 0.85rem;"></i>
                             <span>Tous</span>
                         </button>
-                        <button @click="activeTab = 'active'" 
+                        <button @click="activeTab = 'active'"
                                 type="button"
                                 :class="activeTab === 'active' ? 'btn-success' : 'btn-outline-secondary'"
                                 class="btn btn-sm px-4 d-flex align-items-center gap-2"
@@ -738,7 +738,7 @@
                             <i class="fas fa-unlock" style="font-size: 0.85rem;"></i>
                             <span>Actifs</span>
                         </button>
-                        <button @click="activeTab = 'closed'" 
+                        <button @click="activeTab = 'closed'"
                                 type="button"
                                 :class="activeTab === 'closed' ? 'btn-secondary' : 'btn-outline-secondary'"
                                 class="btn btn-sm px-4 d-flex align-items-center gap-2"
@@ -803,9 +803,9 @@
                                 <td>
                                     <div class="d-flex align-items-center">
                                         <div class="me-3">
-                                            <div class="rounded-circle p-2" 
+                                            <div class="rounded-circle p-2"
                                                  style="background: {{ $exercice->estActif() ? 'rgba(6, 214, 160, 0.1)' : 'rgba(108, 117, 125, 0.1)' }}">
-                                                <i class="fas fa-calendar-day" 
+                                                <i class="fas fa-calendar-day"
                                                    style="color: {{ $exercice->estActif() ? '#06d6a0' : '#6c757d' }}"></i>
                                             </div>
                                         </div>
@@ -855,31 +855,31 @@
                                 </td>
                                 <td>
                                     <div class="d-flex justify-content-end gap-2">
-                                        <button wire:click="edit({{ $exercice->id }})" 
+                                        <button wire:click="edit({{ $exercice->id }})"
                                                 class="btn-action bg-info bg-opacity-10 text-info"
                                                 title="Modifier l'exercice"
                                                 wire:loading.attr="disabled">
                                             <i class="fas fa-edit"></i>
                                         </button>
-                                        
+
                                         @if($exercice->estActif())
-                                            <button wire:click="toggleStatut({{ $exercice->id }})" 
+                                            <button wire:click="toggleStatut({{ $exercice->id }})"
                                                     class="btn-action bg-warning bg-opacity-10 text-warning"
                                                     title="Fermer l'exercice"
                                                     wire:loading.attr="disabled">
                                                 <i class="fas fa-lock"></i>
                                             </button>
                                         @else
-                                            <button wire:click="toggleStatut({{ $exercice->id }})" 
+                                            <button wire:click="toggleStatut({{ $exercice->id }})"
                                                     class="btn-action bg-success bg-opacity-10 text-success"
                                                     title="Activer l'exercice"
                                                     wire:loading.attr="disabled">
                                                 <i class="fas fa-unlock"></i>
                                             </button>
                                         @endif
-                                        
+
                                         @if(!$exercice->estActif())
-                                            <button wire:click="confirmDelete({{ $exercice->id }})" 
+                                            <button wire:click="confirmDelete({{ $exercice->id }})"
                                                     class="btn-action bg-danger bg-opacity-10 text-danger"
                                                     title="Supprimer l'exercice"
                                                     wire:loading.attr="disabled">
@@ -900,7 +900,7 @@
                                                 Commencez par créer votre premier exercice comptable
                                             </p>
                                         </div>
-                                        <button wire:click="create" 
+                                        <button wire:click="create"
                                                 class="btn btn-light btn-premium px-5">
                                             <i class="fas fa-plus-circle me-2"></i>
                                             Créer un exercice
@@ -948,8 +948,8 @@
                                 {{ $isEditing ? 'Mettez à jour les informations de l\'exercice' : 'Définissez une nouvelle période comptable' }}
                             </p>
                         </div>
-                        <button type="button" 
-                                class="modal-close-btn" 
+                        <button type="button"
+                                class="modal-close-btn"
                                 wire:click="$set('showModal', false)"
                                 aria-label="Fermer">
                             <i class="fas fa-times"></i>
@@ -964,9 +964,9 @@
                                     Libellé de l'exercice
                                     <span class="text-danger">*</span>
                                 </label>
-                                <input type="text" 
-                                       wire:model="libelle" 
-                                       id="libelle" 
+                                <input type="text"
+                                       wire:model="libelle"
+                                       id="libelle"
                                        class="form-input-modern @error('libelle') is-invalid @enderror"
                                        placeholder="Ex: Exercice 2024, Année fiscale 2024-2025...">
                                 @error('libelle')
@@ -985,9 +985,9 @@
                                             Date de début
                                             <span class="text-danger">*</span>
                                         </label>
-                                        <input type="date" 
-                                               wire:model="date_debut" 
-                                               id="date_debut" 
+                                        <input type="date"
+                                               wire:model="date_debut"
+                                               id="date_debut"
                                                class="form-input-modern @error('date_debut') is-invalid @enderror">
                                         @error('date_debut')
                                             <span class="form-error-modern">
@@ -1004,9 +1004,9 @@
                                             Date de fin
                                             <span class="text-danger">*</span>
                                         </label>
-                                        <input type="date" 
-                                               wire:model="date_fin" 
-                                               id="date_fin" 
+                                        <input type="date"
+                                               wire:model="date_fin"
+                                               id="date_fin"
                                                class="form-input-modern @error('date_fin') is-invalid @enderror">
                                         @error('date_fin')
                                             <span class="form-error-modern">
@@ -1021,7 +1021,7 @@
                             <!-- Statut - Design moderne et simple -->
                             <div class="form-group-modern">
                                 <label class="form-label-modern mb-3">Statut de l'exercice</label>
-                                
+
                                 <div class="status-toggle-container">
                                     <div class="status-option" :class="{ 'status-option-active': !$wire.statut }">
                                         <div class="status-option-content">
@@ -1037,8 +1037,8 @@
 
                                     <div class="toggle-switch-wrapper">
                                         <label class="toggle-switch">
-                                            <input type="checkbox" 
-                                                   wire:model.live="statut" 
+                                            <input type="checkbox"
+                                                   wire:model.live="statut"
                                                    value="1"
                                                    class="toggle-input">
                                             <span class="toggle-slider"></span>
@@ -1081,12 +1081,12 @@
 
                         <!-- Footer avec boutons -->
                         <div class="modal-modern-footer">
-                            <button type="button" 
-                                    class="btn-modern btn-secondary" 
+                            <button type="button"
+                                    class="btn-modern btn-secondary"
                                     wire:click="$set('showModal', false)">
                                 Annuler
                             </button>
-                            <button type="submit" 
+                            <button type="submit"
                                     class="btn-modern btn-primary"
                                     wire:loading.attr="disabled"
                                     wire:target="save">
@@ -1138,13 +1138,13 @@
                         </div>
                     </div>
                     <div class="modal-footer border-0 justify-content-center">
-                        <button type="button" 
-                                class="btn btn-light btn-premium px-4" 
+                        <button type="button"
+                                class="btn btn-light btn-premium px-4"
                                 wire:click="$set('confirmingExerciceDeletion', false)">
                             <i class="fas fa-arrow-left me-2"></i>
                             Annuler
                         </button>
-                        <button type="button" 
+                        <button type="button"
                                 class="btn btn-danger btn-premium px-5"
                                 wire:click="delete({{ $confirmingExerciceDeletion }})"
                                 wire:loading.attr="disabled">

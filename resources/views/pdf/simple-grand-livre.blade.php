@@ -6,7 +6,7 @@
     <style>
         /* Reset et base */
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        
+
         body {
             font-family: 'DejaVu Sans', 'Arial', sans-serif;
             font-size: 9px;
@@ -15,7 +15,7 @@
             margin: 10px;
             padding: 0;
         }
-        
+
         /* En-tête */
         .header {
             text-align: center;
@@ -23,7 +23,7 @@
             padding-bottom: 10px;
             border-bottom: 2px solid #2c3e50;
         }
-        
+
         .title {
             font-size: 16px;
             font-weight: bold;
@@ -31,20 +31,20 @@
             margin-bottom: 5px;
             text-transform: uppercase;
         }
-        
+
         .subtitle {
             font-size: 10px;
             color: #7f8c8d;
             margin-bottom: 3px;
         }
-        
+
         .entreprise-info {
             font-size: 11px;
             font-weight: bold;
             color: #34495e;
             margin-bottom: 2px;
         }
-        
+
         /* Filtres */
         .filters {
             background-color: #f8f9fa;
@@ -54,13 +54,13 @@
             border-left: 3px solid #3498db;
             font-size: 8px;
         }
-        
+
         /* Section compte */
         .account-section {
             margin-bottom: 15px;
             page-break-inside: avoid;
         }
-        
+
         .account-header {
             background-color: #2c3e50;
             color: white;
@@ -71,25 +71,25 @@
             justify-content: space-between;
             align-items: center;
         }
-        
+
         .account-code {
             font-family: 'DejaVu Sans Mono', monospace;
             font-size: 11px;
         }
-        
+
         .account-name {
             font-size: 10px;
             opacity: 0.9;
             margin-left: 10px;
         }
-        
+
         .account-count {
             font-size: 9px;
             background: rgba(255, 255, 255, 0.2);
             padding: 2px 6px;
             border-radius: 10px;
         }
-        
+
         /* Tableau des écritures */
         .ecritures-table {
             width: 100%;
@@ -97,7 +97,7 @@
             font-size: 8px;
             margin-bottom: 5px;
         }
-        
+
         .ecritures-table th {
             background-color: #34495e;
             color: white;
@@ -106,17 +106,17 @@
             font-weight: bold;
             border: 1px solid #2c3e50;
         }
-        
+
         .ecritures-table td {
             padding: 4px 3px;
             border: 1px solid #ddd;
             vertical-align: top;
         }
-        
+
         .ecritures-table tr:nth-child(even) {
             background-color: #f8f9fa;
         }
-        
+
         /* Colonnes spécifiques */
         .col-date { width: 8%; }
         .col-piece { width: 7%; }
@@ -126,35 +126,35 @@
         .col-libelle { width: 38%; }
         .col-debit { width: 9%; }
         .col-credit { width: 9%; }
-        
+
         .numeric {
             text-align: right;
             font-family: 'DejaVu Sans Mono', monospace;
         }
-        
+
         .debit {
             color: #c0392b;
             font-weight: 500;
         }
-        
+
         .credit {
             color: #27ae60;
             font-weight: 500;
         }
-        
+
         /* Totaux du compte */
         .account-total {
             background-color: #ecf0f1 !important;
             font-weight: bold;
             border-top: 2px solid #bdc3c7;
         }
-        
+
         .account-solde {
             background-color: #d6eaf8 !important;
             font-weight: bold;
             border-top: 2px solid #3498db;
         }
-        
+
         /* Totaux globaux */
         .global-totals {
             background-color: #2c3e50;
@@ -164,58 +164,58 @@
             margin-top: 20px;
             page-break-inside: avoid;
         }
-        
+
         .global-stats {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             gap: 10px;
             margin-bottom: 15px;
         }
-        
+
         .global-stat {
             text-align: center;
             padding: 8px;
             border-radius: 4px;
             background: rgba(255, 255, 255, 0.1);
         }
-        
+
         .global-stat-debit {
             background-color: #c0392b;
         }
-        
+
         .global-stat-credit {
             background-color: #27ae60;
         }
-        
+
         .global-stat-value {
             font-size: 14px;
             font-weight: bold;
             margin-bottom: 2px;
         }
-        
+
         .global-stat-label {
             font-size: 8px;
             opacity: 0.9;
         }
-        
+
         .solde-global {
             text-align: center;
             padding-top: 10px;
             border-top: 1px solid rgba(255, 255, 255, 0.2);
         }
-        
+
         .solde-value {
             font-size: 18px;
             font-weight: bold;
             color: #f1c40f;
             margin-bottom: 3px;
         }
-        
+
         .solde-label {
             font-size: 10px;
             opacity: 0.8;
         }
-        
+
         /* Pied de page */
         .footer {
             text-align: center;
@@ -225,20 +225,20 @@
             font-size: 7px;
             color: #7f8c8d;
         }
-        
+
         /* Utilitaires */
         .text-right { text-align: right; }
         .text-center { text-align: center; }
         .bold { font-weight: bold; }
-        
+
         /* Pagination */
         .page-number:after {
             content: "Page " counter(page);
         }
-        
+
         /* Pour éviter les coupures */
         tr { page-break-inside: avoid; }
-        
+
         /* Style pour les libellés longs */
         .libelle-cell {
             max-width: 250px;
@@ -251,17 +251,17 @@
 <body>
     <!-- En-tête -->
     <div class="header">
-        <div class="title">GRAND LIVRE GÉNÉRAL</div>
-        
+        <div class="title">GRAND LIVRE GÉNÉRALd</div>
+
         <div class="entreprise-info">
             {{ $entreprise->nom }}
             <span style="color: #7f8c8d;">({{ $entreprise->code }})</span>
         </div>
-        
+
         <div class="subtitle">
             Généré le {{ now()->format('d/m/Y à H:i') }}
         </div>
-        
+
         <!-- Filtres appliqués -->
         @if(!empty($filters['date_debut']) || !empty($filters['date_fin']))
         <div class="filters">
@@ -275,7 +275,7 @@
         </div>
         @endif
     </div>
-    
+
     <!-- Comptes avec leurs écritures -->
     @foreach($accounts as $account)
     <div class="account-section">
@@ -287,7 +287,7 @@
             </div>
             <span class="account-count">{{ $account->nombre_ecritures }} écritures</span>
         </div>
-        
+
         <!-- Tableau des écritures -->
         <table class="ecritures-table">
             <thead>
@@ -326,7 +326,7 @@
                     </td>
                 </tr>
                 @endforeach
-                
+
                 <!-- Total du compte -->
                 <tr class="account-total">
                     <td colspan="5" class="text-right bold">TOTAL {{ $account->code }}</td>
@@ -334,7 +334,7 @@
                     <td class="numeric debit bold">{{ number_format($account->total_debit, 0, ',', ' ') }}</td>
                     <td class="numeric credit bold">{{ number_format($account->total_credit, 0, ',', ' ') }}</td>
                 </tr>
-                
+
                 <!-- Solde du compte -->
                 <tr class="account-solde">
                     <td colspan="6" class="text-right bold">SOLDE {{ $account->code }}</td>
@@ -350,7 +350,7 @@
         </table>
     </div>
     @endforeach
-    
+
     <!-- Totaux globaux -->
     <div class="global-totals">
         <div class="global-stats">
@@ -358,23 +358,23 @@
                 <div class="global-stat-value">{{ $totals['total_comptes'] }}</div>
                 <div class="global-stat-label">Comptes SYCEBNL</div>
             </div>
-            
+
             <div class="global-stat">
                 <div class="global-stat-value">{{ number_format($totals['total_ecritures'], 0, ',', ' ') }}</div>
                 <div class="global-stat-label">Total Écritures</div>
             </div>
-            
+
             <div class="global-stat global-stat-debit">
                 <div class="global-stat-value">{{ number_format($totals['total_debit'], 0, ',', ' ') }}</div>
                 <div class="global-stat-label">Total Débit</div>
             </div>
-            
+
             <div class="global-stat global-stat-credit">
                 <div class="global-stat-value">{{ number_format($totals['total_credit'], 0, ',', ' ') }}</div>
                 <div class="global-stat-label">Total Crédit</div>
             </div>
         </div>
-        
+
         <div class="solde-global">
             <div class="solde-label">SOLDE GLOBAL</div>
             <div class="solde-value">
@@ -383,7 +383,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Pied de page -->
     <div class="footer">
         <div style="display: inline-block;">
@@ -393,7 +393,7 @@
         <div class="page-number" style="float: right; font-size: 8px;"></div>
         <div style="clear: both;"></div>
     </div>
-    
+
     <!-- Script pour la numérotation des pages -->
     <script type="text/php">
         if (isset($pdf)) {

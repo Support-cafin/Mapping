@@ -118,7 +118,7 @@
 
         {{-- ✅ TITRE UNE SEULE FOIS PAR PAGE --}}
         <div class="main-title">
-            REGISTRE DES DONATEURS {{ $entreprise->nom ?? 'ALIMA SENEGAL' }} 
+            REGISTRE DES DONATEURS {{ $entreprise->nom ?? 'ALIMA SENEGAL' }}
         </div>
 
         {{-- Boucle donateurs (2 max par page) --}}

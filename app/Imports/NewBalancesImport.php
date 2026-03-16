@@ -31,7 +31,7 @@ class NewBalancesImport implements ToModel, WithHeadingRow, WithValidation, With
     public function model(array $row)
     {
         $row = array_change_key_case($row, CASE_LOWER);
-        
+
         $account = NewAccount::where('entreprise_id', $this->entrepriseId)
             ->where('code', $row['numero_compte'] ?? $row['numéro_compte'] ?? $row['compte'] ?? null)
             ->first();

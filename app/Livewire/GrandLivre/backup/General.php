@@ -16,19 +16,19 @@ use Barryvdh\DomPDF\Facade\Pdf;
 class General extends Component
 {
     public $entreprise;
-    
+
     public $exportProgress = 0;
     public $exportMessage = '';
-    
+
     // AJOUT : Sélection multiple
     public $selectedAccounts = [];
     public $selectAll = false;
-    
+
     protected $listeners = [
         'refreshGrandLivre' => '$refresh',
         'loadMore' => 'loadMore',
     ];
- 
+
     // Filtres - SUPPRESSION de journalCode et search
     public $dateDebut;
     public $dateFin;
@@ -56,7 +56,7 @@ class General extends Component
     public function mount()
     {
         $this->entreprise = auth()->user()->entreprise;
-        
+
         // Filtres par défaut
         $this->dateDebut = '2024-01-01';
         $this->dateFin = '2024-12-31';
@@ -72,7 +72,7 @@ class General extends Component
         if (in_array($property, $filterProperties)) {
             $this->resetPagination();
         }
-        
+
         // Gérer la sélection/déselection de tous les comptes
         if ($property === 'selectAll') {
             if ($this->selectAll) {
@@ -123,7 +123,7 @@ class General extends Component
         $this->isLoading = true;
         $this->loadedCount += $this->perPage;
         $this->isLoading = false;
-        
+
         $totalAccounts = $this->getTotalAccountsCount();
         if ($this->loadedCount >= $totalAccounts) {
             $this->hasMore = false;
@@ -147,14 +147,14 @@ class General extends Component
             ->where('gl.entreprise_id', $this->entreprise->id)
             ->where('gl.exercice_id', $exo->id)
             ->whereNotNull('na.id');
-        
+
         $this->applyQueryFilters($query);
-        
+
         // Filtrer par comptes sélectionnés si nécessaire
         if (!empty($this->selectedAccounts)) {
             $query->whereIn('na.code', $this->selectedAccounts);
         }
-        
+
         return $query->value('total') ?? 0;
     }
 
@@ -166,7 +166,7 @@ class General extends Component
         if (empty($this->paginatedData)) {
             $this->paginatedData = $this->fetchPaginatedData();
         }
-        
+
         return $this->paginatedData;
     }
 
@@ -195,33 +195,33 @@ class General extends Component
                 ->where('gl.exercice_id', $exo->id)
                 ->whereNotNull('na.id')
                 ->groupBy('na.code', 'na.intitule');
-            
+
             $this->applyQueryFilters($accountsQuery);
-            
+
             // Filtrer par comptes sélectionnés si nécessaire
             if (!empty($this->selectedAccounts)) {
                 $accountsQuery->whereIn('na.code', $this->selectedAccounts);
             }
-            
+
             $accountsQuery->orderBy('na.code');
-            
+
             // Pagination manuelle
             $accounts = $accountsQuery->limit($this->loadedCount)->get();
-            
+
             if ($accounts->isEmpty()) {
                 return [];
             }
-            
+
             // Pour chaque compte, récupérer les écritures
             $result = [];
             $accountCodes = $accounts->pluck('new_account_code')->toArray();
-            
+
             // Récupérer toutes les écritures pour ces comptes en une seule requête
             $ecritures = $this->getEcrituresForAccounts($accountCodes);
-            
+
             foreach ($accounts as $account) {
                 $accountEcritures = $ecritures->where('new_account_code', $account->new_account_code);
-                
+
                 $result[] = [
                     'new_account_code' => $account->new_account_code,
                     'new_account_intitule' => $account->new_account_intitule,
@@ -231,9 +231,9 @@ class General extends Component
                     'nombre_ecritures' => (int) $account->nombre_ecritures,
                 ];
             }
-            
+
             return $result;
-            
+
         } catch (\Exception $e) {
             \Log::error('Erreur fetchPaginatedData', ['error' => $e->getMessage()]);
             return [];
@@ -270,12 +270,12 @@ class General extends Component
             ->where('gl.exercice_id', $exo->id)
             ->whereIn('na.code', $accountCodes)
             ->whereNotNull('na.id');
-        
+
         $this->applyQueryFilters($query);
         $query->orderBy('na.code')
               ->orderBy('gl.date_ecriture')
               ->orderBy('gl.id');
-        
+
         return $query->get();
     }
 
@@ -287,7 +287,7 @@ class General extends Component
         if ($this->dateDebut && $this->dateFin) {
             $query->whereBetween('gl.date_ecriture', [$this->dateDebut, $this->dateFin]);
         }
-        
+
         if ($this->exercice) {
             $query->where('gl.exercice', $this->exercice);
         }
@@ -301,38 +301,38 @@ class General extends Component
         if ($this->loadedCount === 0) {
             $this->loadedCount = $this->perPage;
         }
-        
+
         $this->totalCount = $this->getTotalAccountsCount();
-        
+
         if ($this->loadedCount >= $this->totalCount) {
             $this->hasMore = false;
         }
-        
+
         return $this->getPaginatedData();
     }
-    
+
     /**
      * Statistiques légères (calculées à la volée)
      */
     public function getRecapStatsProperty(): array
     {
         $data = $this->getPaginatedData();
-        
+
         $stats = [
             'total_comptes' => count($data),
             'total_ecritures' => 0,
             'total_debit' => 0,
             'total_credit' => 0,
         ];
-        
+
         foreach ($data as $item) {
             $stats['total_ecritures'] += $item['nombre_ecritures'];
             $stats['total_debit'] += $item['total_debit'];
             $stats['total_credit'] += $item['total_credit'];
         }
-        
+
         $soldeGlobal = $stats['total_debit'] - $stats['total_credit'];
-        
+
         return array_merge($stats, [
             'solde_global' => $soldeGlobal,
             'solde_global_absolu' => abs($soldeGlobal),
@@ -374,33 +374,33 @@ class General extends Component
         try {
             $filters = $this->getFiltersArray();
             $fileName = 'grand_livre_general_' . $this->entreprise->code . '_' . date('Ymd_His') . '.xlsx';
-            
+
             // Récupérer les données
             $data = $this->getExportData();
-            
+
             // Générer le HTML pour l'export
             $html = $this->generateExportHtml($data);
-            
+
             // Utiliser PhpSpreadsheet pour générer l'Excel
             $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
             $sheet = $spreadsheet->getActiveSheet();
-            
+
             // Titre
             $sheet->setCellValue('A1', 'GRAND LIVRE GÉNÉRAL');
             $sheet->mergeCells('A1:F1');
             $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
-            
+
             // Informations
             $sheet->setCellValue('A2', $this->entreprise->nom . ' (' . $this->entreprise->code . ')');
             $sheet->mergeCells('A2:F2');
-            
-            $periode = 'Période: ' . ($this->dateDebut ? \Carbon\Carbon::parse($this->dateDebut)->format('d/m/Y') : '') . 
+
+            $periode = 'Période: ' . ($this->dateDebut ? \Carbon\Carbon::parse($this->dateDebut)->format('d/m/Y') : '') .
                        ' au ' . ($this->dateFin ? \Carbon\Carbon::parse($this->dateFin)->format('d/m/Y') : '');
             $sheet->setCellValue('A3', $periode);
             $sheet->mergeCells('A3:F3');
-            
+
             $row = 5;
-            
+
             foreach ($data as $account) {
                 // En-tête compte
                 $sheet->setCellValue('A' . $row, 'COMPTE: ' . $account['code'] . ' - ' . $account['intitule']);
@@ -410,7 +410,7 @@ class General extends Component
                     ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
                     ->getStartColor()->setRGB('F0F0F0');
                 $row++;
-                
+
                 // En-têtes colonnes
                 $sheet->setCellValue('A' . $row, 'Date');
                 $sheet->setCellValue('B' . $row, 'Pièce');
@@ -423,7 +423,7 @@ class General extends Component
                     ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
                     ->getStartColor()->setRGB('E0E0E0');
                 $row++;
-                
+
                 // Écritures
                 foreach ($account['ecritures'] as $ecriture) {
                     $sheet->setCellValue('A' . $row, $ecriture['date']);
@@ -434,7 +434,7 @@ class General extends Component
                     $sheet->setCellValue('F' . $row, $ecriture['credit'] > 0 ? $ecriture['credit'] : '');
                     $row++;
                 }
-                
+
                 // Total compte
                 $sheet->setCellValue('D' . $row, 'TOTAL ' . $account['code']);
                 $sheet->getStyle('D' . $row)->getFont()->setBold(true);
@@ -444,7 +444,7 @@ class General extends Component
                 $sheet->getStyle('E' . $row . ':F' . $row)->getNumberFormat()
                     ->setFormatCode('#,##0');
                 $row++;
-                
+
                 // Solde compte
                 $solde = $account['total_debit'] - $account['total_credit'];
                 $sheet->setCellValue('D' . $row, 'SOLDE ' . $account['code']);
@@ -457,11 +457,11 @@ class General extends Component
                 $sheet->getStyle('E' . $row . ':F' . $row)->getFont()->setBold(true);
                 $row += 2;
             }
-            
+
             // Totaux généraux
             $totals = $this->recapStats;
             $row += 2;
-            
+
             $sheet->setCellValue('C' . $row, 'TOTAUX GÉNÉRAUX');
             $sheet->mergeCells('C' . $row . ':D' . $row);
             $sheet->getStyle('C' . $row)->getFont()->setBold(true)->setSize(12);
@@ -469,39 +469,39 @@ class General extends Component
                 ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
                 ->getStartColor()->setRGB('FFFF00');
             $row++;
-            
+
             $sheet->setCellValue('C' . $row, 'Total Débit:');
             $sheet->setCellValue('D' . $row, number_format($totals['total_debit'], 0, ',', ' '));
             $sheet->getStyle('D' . $row)->getNumberFormat()->setFormatCode('#,##0');
             $row++;
-            
+
             $sheet->setCellValue('C' . $row, 'Total Crédit:');
             $sheet->setCellValue('D' . $row, number_format($totals['total_credit'], 0, ',', ' '));
             $sheet->getStyle('D' . $row)->getNumberFormat()->setFormatCode('#,##0');
             $row++;
-            
+
             $sheet->setCellValue('C' . $row, 'Solde Global:');
-            $sheet->setCellValue('D' . $row, number_format($totals['solde_global_absolu'], 0, ',', ' ') . 
+            $sheet->setCellValue('D' . $row, number_format($totals['solde_global_absolu'], 0, ',', ' ') .
                                  ' (' . ($totals['is_debiteur'] ? 'Débit' : 'Crédit') . ')');
             $sheet->getStyle('C' . $row . ':D' . $row)->getFont()->setBold(true);
-            
+
             // Ajuster les largeurs
             foreach (range('A', 'F') as $col) {
                 $sheet->getColumnDimension($col)->setAutoSize(true);
             }
-            
+
             $this->exportProgress = 100;
             $this->exportMessage = 'Export terminé';
-            
+
             // Sauvegarder dans un fichier temporaire
             $tempFile = tempnam(sys_get_temp_dir(), 'excel_');
             $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
             $writer->save($tempFile);
-            
+
             $this->exporting = false;
-            
+
             return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
-            
+
         } catch (\Exception $e) {
             Log::error('Erreur export Excel', ['error' => $e->getMessage()]);
             $this->exporting = false;
@@ -515,6 +515,7 @@ class General extends Component
      */
     public function exportPdf()
     {
+
         if ($this->exporting) {
             return;
         }
@@ -526,15 +527,15 @@ class General extends Component
             while (ob_get_level()) {
                 ob_end_clean();
             }
-            
+
             // Récupérer les données
             $data = $this->getExportData();
             $totals = $this->recapStats;
             $fileName = 'grand_livre_general_' . $this->entreprise->code . '_' . date('Ymd_His') . '.pdf';
-            
+
             // Générer le HTML pour le PDF
             $html = $this->generatePdfHtml($data, $totals);
-            
+
             // Générer le PDF
             $pdf = PDF::loadHTML($html);
             $pdf->setPaper('A4', 'landscape');
@@ -544,20 +545,20 @@ class General extends Component
                 'dpi' => 72,
                 'isHtml5ParserEnabled' => true,
             ]);
-            
+
             // Sauvegarder dans un fichier temporaire
             $tempDir = storage_path('app/temp_pdf/');
             if (!file_exists($tempDir)) {
                 mkdir($tempDir, 0755, true);
             }
-            
+
             $tempFile = $tempDir . uniqid('gl_', true) . '.pdf';
             $pdf->save($tempFile);
-            
+
             $this->exporting = false;
-            
+
             return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
-            
+
         } catch (\Exception $e) {
             Log::error('Erreur export PDF', ['error' => $e->getMessage()]);
             $this->exporting = false;
@@ -572,7 +573,7 @@ class General extends Component
     private function getExportData(): array
     {
         $exo = DB::table('exercices')->where('statut', 1)->first();
-        
+
         // Récupérer les comptes
         $accountsQuery = DB::table('grand_livres as gl')
             ->select([
@@ -591,23 +592,23 @@ class General extends Component
             ->where('gl.exercice_id', $exo->id)
             ->whereNotNull('na.id')
             ->groupBy('na.code', 'na.intitule');
-        
+
         $this->applyQueryFilters($accountsQuery);
-        
+
         if (!empty($this->selectedAccounts)) {
             $accountsQuery->whereIn('na.code', $this->selectedAccounts);
         }
-        
+
         $accountsQuery->orderBy('na.code');
         $accounts = $accountsQuery->get();
-        
+
         if ($accounts->isEmpty()) {
             return [];
         }
-        
+
         $result = [];
         $accountCodes = $accounts->pluck('new_account_code')->toArray();
-        
+
         // Récupérer les écritures pour tous les comptes
         $ecrituresQuery = DB::table('grand_livres as gl')
             ->select([
@@ -628,17 +629,17 @@ class General extends Component
             ->where('gl.exercice_id', $exo->id)
             ->whereIn('na.code', $accountCodes)
             ->whereNotNull('na.id');
-        
+
         $this->applyQueryFilters($ecrituresQuery);
         $ecrituresQuery->orderBy('na.code')
                        ->orderBy('gl.date_ecriture');
-        
+
         $allEcritures = $ecrituresQuery->get();
         $groupedEcritures = $allEcritures->groupBy('new_account_code');
-        
+
         foreach ($accounts as $account) {
             $accountEcritures = $groupedEcritures->get($account->new_account_code, collect());
-            
+
             $ecrituresFormatted = [];
             foreach ($accountEcritures as $ecriture) {
                 $ecrituresFormatted[] = [
@@ -650,7 +651,7 @@ class General extends Component
                     'credit' => (float) $ecriture->credit,
                 ];
             }
-            
+
             $result[] = [
                 'code' => $account->new_account_code,
                 'intitule' => $account->new_account_intitule,
@@ -660,7 +661,7 @@ class General extends Component
                 'nombre_ecritures' => (int) $account->nombre_ecritures,
             ];
         }
-        
+
         return $result;
     }
 
@@ -695,15 +696,15 @@ class General extends Component
             <div class="header">
                 <h1>GRAND LIVRE GÉNÉRAL</h1>
                 <div class="info">' . htmlspecialchars($this->entreprise->nom) . ' (' . htmlspecialchars($this->entreprise->code) . ')</div>
-                <div class="info">Période: ' . ($this->dateDebut ? \Carbon\Carbon::parse($this->dateDebut)->format('d/m/Y') : '') . 
+                <div class="info">Période: ' . ($this->dateDebut ? \Carbon\Carbon::parse($this->dateDebut)->format('d/m/Y') : '') .
                                        ' au ' . ($this->dateFin ? \Carbon\Carbon::parse($this->dateFin)->format('d/m/Y') : '') . '</div>
                 <div class="info">Généré le: ' . date('d/m/Y H:i') . '</div>
             </div>';
-        
+
         foreach ($data as $account) {
-            $html .= '<div class="account-header">COMPTE ' . htmlspecialchars($account['code']) . ' - ' . 
+            $html .= '<div class="account-header">COMPTE ' . htmlspecialchars($account['code']) . ' - ' .
                      htmlspecialchars($account['intitule']) . ' (' . $account['nombre_ecritures'] . ' écritures)</div>';
-            
+
             $html .= '<table>
                 <thead>
                     <tr>
@@ -716,7 +717,7 @@ class General extends Component
                     </tr>
                 </thead>
                 <tbody>';
-            
+
             foreach ($account['ecritures'] as $ecriture) {
                 $html .= '<tr>
                     <td>' . $ecriture['date'] . '</td>
@@ -727,27 +728,27 @@ class General extends Component
                     <td class="credit">' . ($ecriture['credit'] > 0 ? number_format($ecriture['credit'], 0, ',', ' ') : '') . '</td>
                 </tr>';
             }
-            
+
             $solde = $account['total_debit'] - $account['total_credit'];
-            
+
             $html .= '<tr class="total-row">
                 <td colspan="4"><strong>TOTAL ' . $account['code'] . '</strong></td>
                 <td class="debit"><strong>' . number_format($account['total_debit'], 0, ',', ' ') . '</strong></td>
                 <td class="credit"><strong>' . number_format($account['total_credit'], 0, ',', ' ') . '</strong></td>
             </tr>';
-            
+
             $html .= '<tr class="solde-row">
                 <td colspan="4"><strong>SOLDE ' . $account['code'] . '</strong></td>';
-            
+
             if ($solde > 0) {
                 $html .= '<td class="debit"><strong>' . number_format($solde, 0, ',', ' ') . '</strong></td><td></td>';
             } else {
                 $html .= '<td></td><td class="credit"><strong>' . number_format(abs($solde), 0, ',', ' ') . '</strong></td>';
             }
-            
+
             $html .= '</tr></tbody></table>';
         }
-        
+
         $html .= '<div class="global-stats">
             <table style="width: 60%; margin: 0 auto;">
                 <tr>
@@ -764,18 +765,18 @@ class General extends Component
                 </tr>
                 <tr>
                     <td colspan="2"><strong>Solde Global:</strong></td>
-                    <td colspan="2"><strong>' . number_format($totals['solde_global_absolu'], 0, ',', ' ') . 
+                    <td colspan="2"><strong>' . number_format($totals['solde_global_absolu'], 0, ',', ' ') .
                                       ' (' . ($totals['is_debiteur'] ? 'Débit' : 'Crédit') . ')</strong></td>
                 </tr>
             </table>
         </div>
-        
+
         <div class="footer">
             Document généré automatiquement - Page 1/1
         </div>
         </body>
         </html>';
-        
+
         return $html;
     }
 
@@ -786,10 +787,10 @@ class General extends Component
     {
         $html = '<table>';
         $html .= '<tr><th>Date</th><th>Pièce</th><th>Journal</th><th>Compte</th><th>Libellé</th><th>Débit</th><th>Crédit</th></tr>';
-        
+
         foreach ($data as $account) {
             $html .= '<tr><td colspan="7"><strong>COMPTE ' . $account['code'] . ' - ' . $account['intitule'] . '</strong></td></tr>';
-            
+
             foreach ($account['ecritures'] as $ecriture) {
                 $html .= '<tr>
                     <td>' . $ecriture['date'] . '</td>
@@ -801,30 +802,30 @@ class General extends Component
                     <td>' . ($ecriture['credit'] > 0 ? number_format($ecriture['credit'], 0, ',', ' ') : '') . '</td>
                 </tr>';
             }
-            
+
             $html .= '<tr>
                 <td colspan="5"><strong>TOTAL ' . $account['code'] . '</strong></td>
                 <td><strong>' . number_format($account['total_debit'], 0, ',', ' ') . '</strong></td>
                 <td><strong>' . number_format($account['total_credit'], 0, ',', ' ') . '</strong></td>
             </tr>';
-            
+
             $solde = $account['total_debit'] - $account['total_credit'];
             $html .= '<tr>
                 <td colspan="5"><strong>SOLDE ' . $account['code'] . '</strong></td>';
-            
+
             if ($solde > 0) {
                 $html .= '<td><strong>' . number_format($solde, 0, ',', ' ') . '</strong></td><td></td>';
             } else {
                 $html .= '<td></td><td><strong>' . number_format(abs($solde), 0, ',', ' ') . '</strong></td>';
             }
-            
+
             $html .= '</tr><tr><td colspan="7">&nbsp;</td></tr>';
         }
-        
+
         $html .= '</table>';
         return $html;
     }
-    
+
     public function getFiltersArray(): array
     {
         return [
@@ -835,7 +836,7 @@ class General extends Component
             'entreprise_id' => $this->entreprise->id,
         ];
     }
-    
+
     /**
  * Récupère la liste de tous les comptes pour la sélection
  */
@@ -845,7 +846,7 @@ class General extends Component
 public function getAccountsListProperty(): Collection
 {
     $exo = DB::table('exercices')->where('statut', 1)->first();
-    
+
     return DB::table('grand_livres as gl')
         ->select([
             'na.code',

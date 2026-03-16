@@ -10,7 +10,7 @@
                     Liste de tous les utilisateurs du système
                 </p>
             </div>
-            <a href="{{ route('admin.users.create') }}" 
+            <a href="{{ route('admin.users.create') }}"
                class="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
                 <ion-icon name="person-add" class="mr-2"></ion-icon>
                 Ajouter un utilisateur
@@ -30,7 +30,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="bg-white rounded-lg shadow p-4">
                 <div class="flex items-center">
                     <div class="p-2 bg-purple-100 rounded-lg">
@@ -42,7 +42,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="bg-white rounded-lg shadow p-4">
                 <div class="flex items-center">
                     <div class="p-2 bg-green-100 rounded-lg">
@@ -54,7 +54,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="bg-white rounded-lg shadow p-4">
                 <div class="flex items-center">
                     <div class="p-2 bg-yellow-100 rounded-lg">
@@ -74,19 +74,19 @@
             <!-- Filtres -->
             <div class="p-4 border-b border-gray-200 bg-gray-50">
                 <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
-                    <input type="text" 
-                           id="searchInput" 
-                           placeholder="Rechercher un utilisateur..." 
+                    <input type="text"
+                           id="searchInput"
+                           placeholder="Rechercher un utilisateur..."
                            class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    
-                    <select id="filterRole" 
+
+                    <select id="filterRole"
                             class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <option value="">Tous les rôles</option>
                         <option value="admin">Administrateurs</option>
                         <option value="user">Utilisateurs normaux</option>
                     </select>
                     @if(Auth::user()->is_admin == 1 AND Auth::user()->is_Super_admin == 1)
-                    <select id="filterEntreprise" 
+                    <select id="filterEntreprise"
                             class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <option value="">Toutes les entreprises</option>
                         @foreach($entreprises as $entreprise)
@@ -250,37 +250,37 @@
             const filterEntreprise = document.getElementById('filterEntreprise');
             const userRows = document.querySelectorAll('.user-row');
             const noResultsRow = document.getElementById('noResultsRow');
-    
+
             function filterUsers() {
                 const searchTerm = searchInput.value.toLowerCase();
                 const roleFilter = filterRole.value;
                 const entrepriseFilter = filterEntreprise.value;
-    
+
                 let visibleCount = 0;
-    
+
                 userRows.forEach(row => {
                     const name = row.dataset.name;
                     const email = row.dataset.email;
                     const role = row.dataset.role;
                     const entreprise = row.dataset.entreprise;
-                    
+
                     let show = true;
-                    
+
                     // Filtre par recherche (nom ou email)
                     if (searchTerm && !name.includes(searchTerm) && !email.includes(searchTerm)) {
                         show = false;
                     }
-                    
+
                     // Filtre par rôle
                     if (roleFilter && role !== roleFilter) {
                         show = false;
                     }
-                    
+
                     // Filtre par entreprise
                     if (entrepriseFilter && entreprise !== entrepriseFilter) {
                         show = false;
                     }
-                    
+
                     if (show) {
                         row.style.display = '';
                         visibleCount++;
@@ -288,7 +288,7 @@
                         row.style.display = 'none';
                     }
                 });
-    
+
                 // Afficher/masquer le message "aucun résultat"
                 if (noResultsRow) {
                     if (visibleCount === 0) {
@@ -298,12 +298,12 @@
                     }
                 }
             }
-    
+
             // Écouteurs d'événements
             searchInput.addEventListener('input', filterUsers);
             filterRole.addEventListener('change', filterUsers);
             filterEntreprise.addEventListener('change', filterUsers);
-            
+
             // Initialiser la recherche
             filterUsers();
         });
