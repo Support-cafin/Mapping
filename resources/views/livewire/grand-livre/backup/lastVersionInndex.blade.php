@@ -376,6 +376,14 @@
     <div class="bg-white rounded-lg shadow border overflow-hidden flex flex-col h-full">
         <div class="table-scroll-container">
             <!-- Indicateur de chargement -->
+            @if($isLoading)
+            <div class="loading-indicator">
+                <div class="flex items-center space-x-2">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span class="text-sm text-gray-600">Chargement...</span>
+                </div>
+            </div>
+            @endif
             
             <!-- Barre de sélection -->
             @include('livewire.grand-livre.partials.selection-toolbar')
@@ -408,10 +416,7 @@
                         $ecrituresManuelles = $ecritures->where('source', 'manuel');
                         $manualCount = $ecrituresManuelles->count();
                         $normalCount = $ecrituresNormales->count();
-                        
-                        $startingNumber = ($ecritures->currentPage() - 1) * $ecritures->perPage() + 1;
-                        $nbr_ligne = $startingNumber;
-                        //$nbr_ligne = 1;
+                        $nbr_ligne = 1;
                     @endphp
                     
                     <!-- Écritures normales -->
@@ -502,32 +507,6 @@
                 @endif
                 </tbody>
             </table>
-            
-            {{-- Dans la vue principale, après le tableau --}}
-            <!-- Pagination -->
-            @if(method_exists($ecritures, 'links'))
-                <div class="px-6 py-4 bg-white border-t flex items-center justify-between">
-                    <div class="text-sm text-gray-700">
-                        Affichage de <span class="font-medium">{{ $ecritures->firstItem() }}</span> 
-                        à <span class="font-medium">{{ $ecritures->lastItem() }}</span> 
-                        sur <span class="font-medium">{{ $ecritures->total() }}</span> écritures | Lignes <span class="font-medium">{{ ($ecritures->currentPage() - 1) * $ecritures->perPage() + 1 }}</span> 
-        à <span class="font-medium">{{ min($ecritures->currentPage() * $ecritures->perPage(), $ecritures->total()) }}</span>
-                    </div>
-                    
-                    <div class="flex items-center space-x-2">
-                        <!-- Sélecteur de nombre d'éléments par page -->
-                        <select wire:model.live="perPage" class="px-3 py-1 border rounded text-sm">
-                            <option value="50">50 par page</option>
-                            <option value="100">100 par page</option>
-                            <option value="200">200 par page</option>
-                            <option value="500">500 par page</option>
-                        </select>
-                        
-                        <!-- Liens de pagination -->
-                        {{ $ecritures->links('livewire.grand-livre.partials.pagination') }}
-                    </div>
-                </div>
-            @endif
             <style>
                 /* Amélioration de l'affichage des montants */
                 .montant-cell {
@@ -559,26 +538,22 @@
             <!-- LIGNE DES TOTAUX CORRIGÉE -->
             
 
-           {{-- Supprimez ou commentez ces sections --}}
-        {{-- 
-        <div id="sentinel" class="h-10 flex items-center justify-center">
-            @if($hasMore && $totalCount > 0)
-                <div class="text-center py-4">
-                    <div class="inline-flex items-center space-x-2 text-gray-600">
-                        <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                        <span class="text-sm">Chargement des écritures suivantes...</span>
+            <!-- Sentinel pour infinite scroll -->
+            <div id="sentinel" class="h-10 flex items-center justify-center">
+                @if($hasMore && $totalCount > 0)
+                    <div class="text-center py-4">
+                        <div class="inline-flex items-center space-x-2 text-gray-600">
+                            <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                            <span class="text-sm">Chargement des écritures suivantes...</span>
+                        </div>
                     </div>
-                </div>
-            @elseif($totalCount > 0)
-                <div class="text-center py-4 text-gray-500 text-sm">
-                    <i class="fas fa-check-circle text-black-500 mr-2"></i>
-                    Toutes les écritures sont chargées ({{ number_format($totalCount, 0, ',', ' ') }} au total)
-                </div>
-            @endif
-        </div>
-        --}}
-        
-        {{-- Et supprimez le code JavaScript d'intersection observer --}}
+                @elseif($totalCount > 0)
+                    <div class="text-center py-4 text-gray-500 text-sm">
+                        <i class="fas fa-check-circle text-black-500 mr-2"></i>
+                        Toutes les écritures sont chargées ({{ number_format($totalCount, 0, ',', ' ') }} au total)
+                    </div>
+                @endif
+            </div>
              
             <!-- Statistiques par classe de comptes -->
             <div class="mt-6 bg-white rounded-lg shadow border">

@@ -27,7 +27,7 @@ class Index extends Component
         'mappingDeleted' => 'handleMappingDeleted',
         'close-edit-modal' => 'closeModalAndReset',
         'close-add-modal' => 'closeAddModal',
-        //'loadMore' => 'loadMore',
+        'loadMore' => 'loadMore',
     ];
 
     // Filtres
@@ -105,11 +105,11 @@ class Index extends Component
     ];
 
     // Pagination et infinite scroll
-    public $perPage = 100;
-    // public $loadedCount = 0; // SUPPRIMEZ ces propriétés
-    // public $totalCount = 0;
-    // public $hasMore = true;
-    // public $isLoading = false;
+    public $perPage = 1000;
+    public $loadedCount = 0;
+    public $totalCount = 0;
+    public $hasMore = true;
+    public $isLoading = false;
     public $sortField = 'date_ecriture';
     public $sortDirection = 'desc';
     public $importedCount = 0;
@@ -142,15 +142,15 @@ class Index extends Component
     ];
 
     // Constante de limite
-    const MAX_RESULTS = 60000;
+    const MAX_RESULTS = 25000;
 
     public function mount()
     {
         $this->entreprise = auth()->user()->entreprise;
-        $exo = DB::table('exercices')->where('statut', 1)->first();
+        
         // Filtres par défaut
-        $this->dateDebut = $exo->date_debut ?? '2024-01-31';
-        $this->dateFin = $exo->date_fin ?? '2024-12-31';
+        $this->dateDebut = '2024-01-01';
+        $this->dateFin = '2024-12-31';
         $this->exercice = null;
         $this->journalCode = '';
         $this->accountType = 'all';
@@ -218,11 +218,11 @@ class Index extends Component
         $filterProperties = [
             'search', 'dateDebut', 'dateFin', 'exercice', 'journalCode',
             'accountType', 'selectedAccounts', 'lettre', 'sourceFilter', 
-            'mappingFilter', 'groupByAccount', 'perPage' // Ajout de perPage
+            'mappingFilter', 'groupByAccount'  // Ajouté
         ];
     
         if (in_array($property, $filterProperties)) {
-            $this->resetPage(); // Utiliser resetPage() au lieu de resetPagination()
+            $this->resetPagination();
             $this->updateStats();
         }
         
@@ -232,13 +232,12 @@ class Index extends Component
         }
     }
 
-    // SUPPRIMEZ cette méthode
-    // public function resetPagination()
-    // {
-    //     $this->loadedCount = 0;
-    //     $this->hasMore = true;
-    //     $this->isLoading = false;
-    // }
+    public function resetPagination()
+    {
+        $this->loadedCount = 0;
+        $this->hasMore = true;
+        $this->isLoading = false;
+    }
 
     public function updateStats()
     {
@@ -248,7 +247,7 @@ class Index extends Component
             $query = $this->getBaseQuery();
             
             return [
-                'total' => $query->count(), // Changé de getTotalCount()
+                'total' => $this->getTotalCount(),
                 'total_debit' => $query->sum('debit'),
                 'total_credit' => $query->sum('credit'),
                 'solde' => abs($query->sum('debit') - $query->sum('credit')),
@@ -259,32 +258,29 @@ class Index extends Component
         });
     }
 
-    // SUPPRIMEZ cette méthode
-    // public function loadMore()
-    // {
-    //     if ($this->isLoading || !$this->hasMore) {
-    //         return;
-    //     }
-    //
-    //     $this->isLoading = true;
-    //     
-    //     usleep(300000); // 0.3 seconde
-    //     
-    //     $this->loadedCount += $this->perPage;
-    //     
-    //     if ($this->loadedCount >= $this->getTotalCount()) {
-    //         $this->hasMore = false;
-    //     }
-    //     
-    //     $this->isLoading = false;
-    // }
+    public function loadMore()
+    {
+        if ($this->isLoading || !$this->hasMore) {
+            return;
+        }
 
-    // SUPPRIMEZ cette méthode
-    // protected function getTotalCount()
-    // {
-    //     return $this->getBaseQuery()->count();
-    // }
+        $this->isLoading = true;
+        
+        usleep(300000); // 0.3 seconde
+        
+        $this->loadedCount += $this->perPage;
+        
+        if ($this->loadedCount >= $this->getTotalCount()) {
+            $this->hasMore = false;
+        }
+        
+        $this->isLoading = false;
+    }
 
+    protected function getTotalCount()
+    {
+        return $this->getBaseQuery()->count();
+    }
     
     public function selectAccount($accountId)
     {
@@ -472,7 +468,7 @@ class Index extends Component
         ->forEntreprise($this->entreprise->id)
         ->valides();
     
-        // Appliquer les filtres
+        // Appliquer les filtres (identique à avant)
         if ($this->dateDebut && $this->dateFin) {
             $query->whereBetween('date_ecriture', [$this->dateDebut, $this->dateFin]);
         }
@@ -560,7 +556,7 @@ class Index extends Component
         }
         
         // Réinitialiser la pagination et mettre à jour les stats
-        $this->resetPage(); // Changé
+        $this->resetPagination();
         $this->updateStats();
     }
     
@@ -580,82 +576,98 @@ class Index extends Component
                 ->toArray();
         }
         
-        $this->resetPage(); // Changé
+        $this->resetPagination();
         $this->updateStats();
     }
     
     public function clearSelectedAccounts()
     {
         $this->selectedAccounts = [];
-        $this->resetPage(); // Changé
+        $this->resetPagination();
         $this->updateStats();
     }
     
     public function updatedAccountType()
     {
         $this->selectedAccounts = [];
-        $this->resetPage(); // Changé
+        $this->resetPagination();
         $this->updateStats();
     }
     
     public function getEcrituresProperty()
     {
-        return $this->getBaseQuery()
-            ->orderBy($this->sortField, $this->sortDirection)
-            ->paginate($this->perPage);
+        if ($this->loadedCount === 0) {
+            $this->loadedCount = $this->perPage;
+        }
+
+        $query = $this->getBaseQuery();
+        $ecritures = $query->limit($this->loadedCount)->get();
+
+        $this->totalCount = $this->getTotalCount();
+        
+        if ($this->loadedCount >= $this->totalCount) {
+            $this->hasMore = false;
+        }
+
+        return $ecritures;
     }
 
     public function calculateClassStats()
-    {
-        $query = $this->getBaseQuery();
-        $ecritures = $query->get();
+{
+    $query = $this->getBaseQuery();
+    $ecritures = $query->get();
 
-        $classStats = [
-            'classe_1_5' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
-            'classe_6_7' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
-            'classe_9' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
-            'autres_comptes' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
-            'non_mappes' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
-            'global' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
-        ];
+    $classStats = [
+        'classe_1_5' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
+        'classe_6_7' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
+        //'classe_8' => ['debit' => 0, 'credit' => 0, 'solde' => 0], // ✅ AJOUTER classe 8
+        'classe_9' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
+        'autres_comptes' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
+        'non_mappes' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
+        'global' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
+    ];
 
-        foreach ($ecritures as $ecriture) {
-            $debit = $ecriture->debit ?? 0;
-            $credit = $ecriture->credit ?? 0;
+    foreach ($ecritures as $ecriture) {
+        $debit = $ecriture->debit ?? 0;
+        $credit = $ecriture->credit ?? 0;
 
-            $classStats['global']['debit'] += $debit;
-            $classStats['global']['credit'] += $credit;
-            $classStats['global']['solde'] += ($debit - $credit);
+        $classStats['global']['debit'] += $debit;
+        $classStats['global']['credit'] += $credit;
+        $classStats['global']['solde'] += ($debit - $credit);
 
-            if ($ecriture->newAccount && $ecriture->newAccount->code) {
-                $firstDigit = substr($ecriture->newAccount->code, 0, 1);
+        if ($ecriture->newAccount && $ecriture->newAccount->code) {
+            $firstDigit = substr($ecriture->newAccount->code, 0, 1);
 
-                if (in_array($firstDigit, ['1', '2', '3', '4', '5'])) {
-                    $classStats['classe_1_5']['debit'] += $debit;
-                    $classStats['classe_1_5']['credit'] += $credit;
-                    $classStats['classe_1_5']['solde'] += ($debit - $credit);
-                } elseif (in_array($firstDigit, ['6', '7', '8'])) {
-                    $classStats['classe_6_7']['debit'] += $debit;
-                    $classStats['classe_6_7']['credit'] += $credit;
-                    $classStats['classe_6_7']['solde'] += ($debit - $credit);
-                } elseif ($firstDigit === '9') {
-                    $classStats['classe_9']['debit'] += $debit;
-                    $classStats['classe_9']['credit'] += $credit;
-                    $classStats['classe_9']['solde'] += ($debit - $credit);
-                } else {
-                    $classStats['autres_comptes']['debit'] += $debit;
-                    $classStats['autres_comptes']['credit'] += $credit;
-                    $classStats['autres_comptes']['solde'] += ($debit - $credit);
-                }
+            if (in_array($firstDigit, ['1', '2', '3', '4', '5'])) {
+                $classStats['classe_1_5']['debit'] += $debit;
+                $classStats['classe_1_5']['credit'] += $credit;
+                $classStats['classe_1_5']['solde'] += ($debit - $credit);
+            } elseif (in_array($firstDigit, ['6', '7', '8'])) {
+                $classStats['classe_6_7']['debit'] += $debit;
+                $classStats['classe_6_7']['credit'] += $credit;
+                $classStats['classe_6_7']['solde'] += ($debit - $credit);
+                //$classStats['classe_8']['debit'] += $debit;
+                //$classStats['classe_8']['credit'] += $credit;
+                //$classStats['classe_8']['solde'] += ($debit - $credit);
+            } elseif ($firstDigit === '9') {
+                // ✅ CORRECTION : '10' n'est pas un premier chiffre
+                $classStats['classe_9']['debit'] += $debit;
+                $classStats['classe_9']['credit'] += $credit;
+                $classStats['classe_9']['solde'] += ($debit - $credit);
             } else {
-                $classStats['non_mappes']['debit'] += $debit;
-                $classStats['non_mappes']['credit'] += $credit;
-                $classStats['non_mappes']['solde'] += ($debit - $credit);
+                $classStats['autres_comptes']['debit'] += $debit;
+                $classStats['autres_comptes']['credit'] += $credit;
+                $classStats['autres_comptes']['solde'] += ($debit - $credit);
             }
+        } else {
+            $classStats['non_mappes']['debit'] += $debit;
+            $classStats['non_mappes']['credit'] += $credit;
+            $classStats['non_mappes']['solde'] += ($debit - $credit);
         }
-
-        return $classStats;
     }
+
+    return $classStats;
+}
 
     public function calculateTotals()
     {
@@ -693,6 +705,7 @@ class Index extends Component
             $query = OldAccount::where('entreprise_id', $this->entreprise->id)
                 ->where('exercice_id', $exo->id ?? '');
         } elseif ($this->accountType === 'new') {
+            // ✅ CORRECTION : remplacer >where par ->where
             $query = NewAccount::where('entreprise_id', $this->entreprise->id)
                 ->where('exercice_id', $exo->id ?? '');
         }
@@ -734,7 +747,6 @@ class Index extends Component
     
     public function resetFilters()
     {
-        $exo = DB::table('exercices')->where('statut', 1)->first();
         $this->reset([
             'search',
             'dateDebut',
@@ -742,22 +754,20 @@ class Index extends Component
             'exercice',
             'journalCode',
             'accountType',
-            'selectedAccounts',
+            'selectedAccounts',  // Changé de 'accountId'
             'lettre',
             'sourceFilter',
             'mappingFilter'
         ]);
     
-        //$this->dateDebut = '2024-01-01';
-        //$this->dateFin = '2024-12-31';
-        $this->dateDebut = $exo->date_debut ?? '2024-01-31';
-        $this->dateFin = $exo->date_fin ?? '2024-12-31';
+        $this->dateDebut = '2024-01-01';
+        $this->dateFin = '2024-12-31';
         $this->accountType = 'all';
         $this->sourceFilter = 'all';
         $this->mappingFilter = 'all';
-        $this->selectedAccounts = [];
+        $this->selectedAccounts = [];  // Ajouté
     
-        $this->resetPage(); // Changé
+        $this->resetPagination();
         $this->updateStats();
     }
 
@@ -770,7 +780,7 @@ class Index extends Component
             $this->sortDirection = 'asc';
         }
 
-        $this->resetPage(); // Changé
+        $this->resetPagination();
     }
 
     // Méthodes d'édition, suppression, import, etc. (identiques à votre code original)
@@ -1853,10 +1863,10 @@ public function debugGroupedView()
             'stats' => $this->stats,
             'totals' => $totals,
             'classStats' => $classStats,
-             // 'loadedCount' => $this->loadedCount, // SUPPRIMEZ ces lignes
-            // 'totalCount' => $this->totalCount,
-            // 'hasMore' => $this->hasMore,
-            // 'isLoading' => $this->isLoading,
+            'loadedCount' => $this->loadedCount,
+            'totalCount' => $this->totalCount,
+            'hasMore' => $this->hasMore,
+            'isLoading' => $this->isLoading,
         ])->layout('layouts.app');
     }
 }

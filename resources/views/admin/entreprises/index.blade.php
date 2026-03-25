@@ -4,14 +4,17 @@
         <!-- En-tête -->
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
             <div>
-                <h1 class="text-2xl font-bold text-gray-800">Gestion des entreprises</h1>
-                <p class="text-gray-600 mt-1">Liste de toutes les entreprises du système</p>
+                <h1 class="text-2xl font-bold text-gray-800">Gestion des ONG</h1>
+                <p class="text-gray-600 mt-1">Liste de toutes les ONG du système</p>
             </div>
+            @php $ong = DB::table('entreprises')->where('id', Auth::user()->entreprise_id)->where('type_compte', 'premium')->first(); @endphp
+            @if($ong)
             <a href="{{ route('admin.entreprises.create') }}" 
                class="mt-4 sm:mt-0 inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
                 <ion-icon name="business" class="mr-2"></ion-icon>
-                Ajouter une entreprise
+                Ajouter une ONG
             </a>
+            @endif
         </div>
 
         <!-- Statistiques -->
@@ -22,7 +25,7 @@
                         <ion-icon name="business" class="text-2xl text-blue-600"></ion-icon>
                     </div>
                     <div class="ml-4">
-                        <p class="text-sm text-gray-600">Total entreprises</p>
+                        <p class="text-sm text-gray-600">Total ONG</p>
                         <p class="text-2xl font-bold text-gray-800">{{ $entreprises->count() }}</p>
                     </div>
                 </div>
@@ -46,7 +49,7 @@
                         <ion-icon name="shield-checkmark" class="text-2xl text-green-600"></ion-icon>
                     </div>
                     <div class="ml-4">
-                        <p class="text-sm text-gray-600">Admins entreprises</p>
+                        <p class="text-sm text-gray-600">Admins ONG</p>
                         <p class="text-2xl font-bold text-gray-800">{{ $adminUsers }}</p>
                     </div>
                 </div>
@@ -93,7 +96,7 @@
                     <thead class="bg-gray-50">
                         <tr>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Entreprise
+                                ONG
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 Code
@@ -112,8 +115,9 @@
                             </th>
                         </tr>
                     </thead>
+                    @if($ong)
                     <tbody class="bg-white divide-y divide-gray-200" id="entreprisesTableBody">
-                        @forelse($entreprises as $entreprise)
+                        @forelse($entreprises_pros as $entreprise)
                             <tr class="hover:bg-gray-50 transition-colors entreprise-row"
                                 data-name="{{ strtolower($entreprise->nom) }}"
                                 data-code="{{ strtolower($entreprise->code) }}"
@@ -179,21 +183,8 @@
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     <div class="flex space-x-2">
-                                        <!--<a href="{{ route('admin.entreprises.show', $entreprise->id) }}" -->
-                                        <!--   class="text-blue-600 hover:text-blue-900"-->
-                                        <!--   title="Voir détails">-->
-                                        <!--    <ion-icon name="eye" class="text-lg"></ion-icon>-->
-                                        <!--</a>-->
-                                        <!--<a href="{{ route('admin.entreprises.edit', $entreprise->id) }}" -->
-                                        <!--   class="text-yellow-600 hover:text-yellow-900"-->
-                                        <!--   title="Modifier">-->
-                                        <!--    <ion-icon name="create" class="text-lg"></ion-icon>-->
-                                        <!--</a>-->
-                                        <!--<a href="{{ route('admin.users.index', ['entreprise' => $entreprise->id]) }}" -->
-                                        <!--   class="text-green-600 hover:text-green-900"-->
-                                        <!--   title="Voir utilisateurs">-->
-                                        <!--    <ion-icon name="people" class="text-lg"></ion-icon>-->
-                                        <!--</a>-->
+                                        <a href="{{ route('admin.entreprises.show', $entreprise) }}" class="btn btn-sm btn-info" style="background-color : blue; color:white;">Voir</a>
+                                        <a href="{{ route('admin.entreprises.edit', $entreprise) }}" class="btn btn-sm btn-warning" style="background-color : orange; color:white;">Modifier</a>
                                         <form action="{{ route('admin.entreprises.destroy', $entreprise->id) }}" 
                                               method="POST" 
                                               class="inline"
@@ -215,12 +206,98 @@
                                     <div class="text-gray-400">
                                         <ion-icon name="business" class="text-4xl mb-2"></ion-icon>
                                         <p class="text-lg">Aucune entreprise trouvée</p>
-                                        <p class="text-sm mt-1">Commencez par créer votre première entreprise</p>
+                                        <p class="text-sm mt-1">Commencez par créer votre première ONG</p>
                                     </div>
                                 </td>
                             </tr>
                         @endforelse
                     </tbody>
+                    @else
+                    <tbody class="bg-white divide-y divide-gray-200" id="entreprisesTableBody">
+                            <tr class="hover:bg-gray-50 transition-colors entreprise-row"
+                                data-name="{{ strtolower($entreprises_standard->nom) }}"
+                                data-code="{{ strtolower($entreprises_standard->code) }}"
+                                data-users="{{ $entreprises_standard->users_count }}">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                            <ion-icon name="business" class="text-blue-600 text-xl"></ion-icon>
+                                        </div>
+                                        <div class="ml-4">
+                                            <div class="text-sm font-medium text-gray-900">
+                                                {{ $entreprises_standard->nom }}
+                                            </div>
+                                            @if($entreprises_standard->adresse)
+                                                <div class="text-xs text-gray-500 truncate max-w-xs">
+                                                    {{ $entreprises_standard->adresse }}
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                                        {{ $entreprises_standard->code }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900">
+                                        @if($entreprises_standard->email)
+                                            <div class="flex items-center">
+                                                <ion-icon name="mail" class="text-gray-400 mr-1"></ion-icon>
+                                                <span>{{ $entreprises_standard->email }}</span>
+                                            </div>
+                                        @endif
+                                        @if($entreprises_standard->telephone)
+                                            <div class="flex items-center mt-1">
+                                                <ion-icon name="call" class="text-gray-400 mr-1"></ion-icon>
+                                                <span>{{ $entreprises_standard->telephone }}</span>
+                                            </div>
+                                        @endif
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center mr-2">
+                                            <span class="text-xs font-bold text-blue-800">{{ $entreprises_standard->users_count }}</span>
+                                        </div>
+                                        <div class="text-sm text-gray-900">
+                                            {{ $entreprises_standard->users_count }} utilisateur{{ $entreprises_standard->users_count > 1 ? 's' : '' }}
+                                            @if($entreprises_standard->admins_count > 0)
+                                                <div class="text-xs text-purple-600">
+                                                    {{ $entreprises_standard->admins_count }} admin{{ $entreprises_standard->admins_count > 1 ? 's' : '' }}
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ $entreprises_standard->created_at->format('d/m/Y') }}
+                                    <div class="text-xs text-gray-400">
+                                        {{ $entreprises_standard->created_at->diffForHumans() }}
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                    <div class="flex space-x-2">
+                                        <a href="{{ route('admin.entreprises.show', $entreprises_standard->id) }}" class="btn btn-sm btn-info" style="background-color : blue; color:white;">Voir</a>
+                                        <a href="{{ route('admin.entreprises.edit', $entreprises_standard->id) }}" class="btn btn-sm btn-warning" style="background-color : orange; color:white;">Modifier</a>
+                                        <form action="{{ route('admin.entreprises.destroy', $entreprises_standard->id) }}" 
+                                              method="POST" 
+                                              class="inline"
+                                              onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette entreprise ? Tous les utilisateurs associés seront également supprimés.');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" 
+                                                    class="text-red-600 hover:text-red-900"
+                                                    title="Supprimer">
+                                                <ion-icon name="trash" class="text-lg"></ion-icon>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                    </tbody>
+                    @endif
                 </table>
             </div>
         </div>

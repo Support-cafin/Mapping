@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Entreprise;
-use App\Models\User;
+use App\Models\User; 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use DB;
+use Auth;
 
 class AdminController extends Controller
 {
@@ -29,20 +31,79 @@ class AdminController extends Controller
     // Gestion des entreprises (MAINTENANT POUR TOUS LES ADMINS)
     public function entreprises()
     {
-        // TOUS les admins peuvent voir les entreprises
+        // TOUS les admins peuvent voir les entreprises 
         $user = auth()->user();
         
         $entreprises = Entreprise::withCount(['users', 'users as admins_count' => function($query) {
-            $query->where('is_admin', true);
+            $query->where('type_compte', 'premium');
         }])->orderBy('created_at', 'desc')->get();
-        
+        $entreprises_pros = Entreprise::withCount(['users', 'users as admins_count' => function($query) {
+            $query->where('type_compte', 'premium');
+        }])->orderBy('created_at', 'desc')->get();
+        $entreprises_standard = Entreprise::withCount(['users', 'users as admins_count' => function($query) {
+            $query->where('type_compte', 'standard');
+        }])->where('id', Auth::user()->entreprise_id)->orderBy('created_at', 'desc')->first();
         // Statistiques globales
         $totalUsers = User::count();
         $adminUsers = User::where('is_admin', true)->count();
         $regularUsers = $totalUsers - $adminUsers;
         
-        return view('admin.entreprises.index', compact('entreprises', 'totalUsers', 'adminUsers', 'regularUsers'));
+        return view('admin.entreprises.index', compact('entreprises', 'totalUsers', 'adminUsers', 'regularUsers', 'entreprises_pros', 'entreprises_standard'));
     }
+    
+    /*public function entreprises()
+    {
+        $user = auth()->user();
+        $entreprise = $user->entreprise; // Supposons que l'utilisateur appartient à une entreprise
+        
+        // Vérifier si l'utilisateur est admin super admin ou admin d'entreprise
+        $isSuperAdmin = $user->isAdmin(); // Votre méthode isAdmin() qui vérifie les super admins
+        
+        // Si c'est un super admin, il voit tout
+        if ($isSuperAdmin) {
+            $entreprises = Entreprise::withCount(['users', 'users as admins_count' => function($query) {
+                $query->where('type_compte', 'premium');
+            }])->orderBy('created_at', 'desc')->get();
+        } 
+        // Sinon, c'est un admin d'entreprise, on vérifie son type de compte
+        else {
+            // Vérifier si l'entreprise existe et son type de compte
+            if (!$entreprise) {
+                abort(403, 'Vous n\'êtes pas associé à une entreprise.');
+            }
+            
+            // Si l'entreprise a un compte premium, elle peut voir toutes les entreprises
+            if ($entreprise->type_compte === 'premium') {
+                $entreprises = Entreprise::withCount(['users', 'users as admins_count' => function($query) {
+                    $query->where('is_admin', true);
+                }])->orderBy('created_at', 'desc')->get();
+            } 
+            // Si compte standard, elle voit seulement son entreprise
+            else {
+                $entreprises = Entreprise::withCount(['users', 'users as admins_count' => function($query) {
+                    $query->where('type_compte', 'standard');
+                }])
+                ->where('id', $entreprise->id)
+                ->orderBy('created_at', 'desc')
+                ->get();
+            }
+        }
+        
+        // Statistiques globales (à ajuster selon les droits)
+        if ($isSuperAdmin || ($entreprise && $entreprise->type_compte === 'premium')) {
+            // Stats globales pour super admin et premium
+            $totalUsers = User::count();
+            $adminUsers = User::where('is_admin', true)->count();
+            $regularUsers = $totalUsers - $adminUsers;
+        } else {
+            // Stats seulement pour l'entreprise standard
+            $totalUsers = $entreprise->users()->count();
+            $adminUsers = $entreprise->users()->where('is_admin', true)->count();
+            $regularUsers = $totalUsers - $adminUsers;
+        }
+        
+        return view('admin.entreprises.index', compact('entreprises', 'totalUsers', 'adminUsers', 'regularUsers'));
+    }*/
     
     public function createEntreprise()
     {
@@ -72,6 +133,13 @@ class AdminController extends Controller
             'adresse' => $request->adresse,
             'telephone' => $request->telephone,
             'email' => $request->email,
+            'numero_fiscal' => $request->numero_fiscal,
+            'numero_agrement' => $request->numero_agrement,
+            'sigle_usuel' => $request->sigle_usuel,
+            'registre_commerce' => $request->registre_commerce,
+            'numero_ninea' => $request->numero_ninea,
+            'pays_id' => $request->pays_id,
+            'type_compte' => $request->type_compte,
         ]);
     
         // Créer un admin pour l'entreprise si demandé
@@ -97,14 +165,16 @@ class AdminController extends Controller
         $entreprise->load(['users' => function($query) {
             $query->orderBy('is_admin', 'desc')->orderBy('name');
         }]);
-        
-        return view('admin.entreprises.show', compact('entreprise'));
+        $adminUsers = User::where('entreprise_id', $entreprise->id)->count();
+        $adminEntreprisesUsers = User::where('entreprise_id', $entreprise->id)->get();
+        return view('admin.entreprises.show', compact('entreprise', 'adminUsers', 'adminEntreprisesUsers'));
     }
     
     public function editEntreprise(Entreprise $entreprise)
     {
         // TOUS les admins peuvent modifier les entreprises
-        return view('admin.entreprises.edit', compact('entreprise'));
+        $pays = DB::table('pays')->orderBy('libelle_fr', 'asc')->get();
+        return view('admin.entreprises.edit', compact('entreprise', 'pays'));
     }
     
     public function updateEntreprise(Request $request, Entreprise $entreprise)
@@ -119,7 +189,20 @@ class AdminController extends Controller
             'adresse' => 'nullable|string',
         ]);
     
-        $entreprise->update($request->only(['nom', 'code', 'adresse', 'telephone', 'email']));
+        $entreprise->update([
+            'nom' => $request->nom,
+            'code' => $request->code,
+            'adresse' => $request->adresse,
+            'telephone' => $request->telephone,
+            'email' => $request->email,
+            'numero_fiscal' => $request->numero_fiscal,
+            'numero_agrement' => $request->numero_agrement,
+            'sigle_usuel' => $request->sigle_usuel,
+            'registre_commerce' => $request->registre_commerce,
+            'numero_ninea' => $request->numero_ninea,
+            'pays_id' => $request->pays_id,
+            'type_compte' => $request->type_compte,
+        ]);
     
         return redirect()->route('admin.entreprises.index')
             ->with('success', 'Entreprise mise à jour avec succès');

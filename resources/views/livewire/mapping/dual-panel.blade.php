@@ -309,7 +309,7 @@
                                     @error('editAccountIntitule') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
                                 </div>
                                 
-                                @if(!$accountToEdit->isMapped())
+                                {{-- @if(!$accountToEdit->isMapped())
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 mb-1">Compte parent</label>
                                         <select wire:model="editAccountParentId" 
@@ -320,6 +320,34 @@
                                                     <option value="{{ $parent['id'] }}">{{ $parent['text'] }}</option>
                                                 @endif
                                             @endforeach
+                                        </select>
+                                    </div>
+                                @endif --}}
+                                @if(!$accountToEdit->isMapped())
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Compte parent</label>
+                                        <select wire:model="editAccountParentId" 
+                                                class="w-full border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                            <option value="">Aucun (compte racine)</option>
+                                            
+                                            {{-- Choisir la bonne liste selon le type de compte --}}
+                                            @if($editAccountType === 'old')
+                                                @foreach($oldParents as $parent)
+                                                    @if($parent['id'] != $accountToEdit->id)
+                                                        <option value="{{ $parent['id'] }}" {{ $editAccountParentId == $parent['id'] ? 'selected' : '' }}>
+                                                            {{ $parent['text'] }}
+                                                        </option>
+                                                    @endif
+                                                @endforeach
+                                            @else
+                                                @foreach($newParents as $parent)
+                                                    @if($parent['id'] != $accountToEdit->id)
+                                                        <option value="{{ $parent['id'] }}" {{ $editAccountParentId == $parent['id'] ? 'selected' : '' }}>
+                                                            {{ $parent['text'] }}
+                                                        </option>
+                                                    @endif
+                                                @endforeach
+                                            @endif
                                         </select>
                                     </div>
                                 @endif
@@ -415,7 +443,7 @@
                                         </div>
                                     @endif
                                     
-                                    @if($deleteAccountInfo['hasData'])
+                                    @if(isset($deleteAccountInfo['hasData']) && $deleteAccountInfo['hasData'])
                                         <div class="flex items-center text-red-600">
                                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -453,7 +481,7 @@
                                             @if($deleteAccountInfo['isMapped'])
                                                 <li>Il est déjà mappé</li>
                                             @endif
-                                            @if($deleteAccountInfo['hasData'])
+                                            @if(isset($deleteAccountInfo['hasData']) && $deleteAccountInfo['hasData'])
                                                 <li>Il contient des données</li>
                                             @endif
                                             @if($deleteAccountInfo['hasChildren'])

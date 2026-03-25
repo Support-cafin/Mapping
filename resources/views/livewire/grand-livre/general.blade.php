@@ -1,30 +1,13 @@
 <div id="gl-root"
      class="p-0 mt-12 bg-gray-50 flex flex-col h-screen"
      x-data="{
-        hasMore: @entangle('hasMore'),
-        isLoading: @entangle('isLoading'),
-        exporting: @entangle('exporting'),
-        showModal: false,
-        init() {
-            const sentinel = document.getElementById('sentinel-general');
-            if (!sentinel) return;
-
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting && this.hasMore && !this.isLoading) {
-                        @this.call('loadMore');
-                    }
-                });
-            }, { rootMargin: '150px', threshold: 0.1 });
-
-            observer.observe(sentinel);
-            this.$watch('hasMore', val => { if (!val) observer.unobserve(sentinel); });
-        }
+         exporting: @entangle('exporting'),
+         showModal: false,
      }">
 
     <style>
         .table-container {
-            height: calc(100vh - 145px);
+            height: calc(100vh - 185px);
             overflow-y: auto;
             overflow-x: auto;
         }
@@ -60,14 +43,22 @@
         .scrollbar-thin::-webkit-scrollbar-thumb  { background: #adb5bd; border-radius: 3px; }
 
         /* Modal */
-        .modal-bg      { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 900; }
-        .modal-box     { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: white; padding: 16px; border-radius: 6px; width: min(580px, 92vw); max-height: 82vh; overflow-y: auto; z-index: 901; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
-        .account-item  { padding: 5px 8px; border-bottom: 1px solid #e9ecef; font-size: 9px; cursor: pointer; }
+        .modal-bg  { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 900; }
+        .modal-box { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: white; padding: 16px; border-radius: 6px; width: min(600px, 94vw); max-height: 84vh; overflow-y: auto; z-index: 901; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+        .account-item { padding: 5px 8px; border-bottom: 1px solid #e9ecef; font-size: 9px; cursor: pointer; user-select: none; }
         .account-item:hover { background: #f8f9fa; }
         .account-item.selected { background: #dbeafe; }
+
+        /* Pagination */
+        .pagination-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 22px; padding: 0 6px; font-size: 9px; border-radius: 3px; border: 1px solid #ced4da; cursor: pointer; transition: all .15s; }
+        .pagination-btn:hover:not(:disabled) { background: #e7f1ff; border-color: #3b82f6; color: #1d4ed8; }
+        .pagination-btn.active { background: #3b82f6; color: white; border-color: #3b82f6; font-weight: 700; }
+        .pagination-btn:disabled { opacity: .4; cursor: not-allowed; }
     </style>
 
-    
+    {{-- ═══════════════════════════════════════════
+         BARRE SUPÉRIEURE
+    ═══════════════════════════════════════════ --}}
     <div class="flex-shrink-0 px-3 py-1 bg-white border-b shadow-sm no-print">
         <div class="flex justify-between items-center">
 
@@ -77,29 +68,10 @@
             </div>
 
             <div class="flex items-center space-x-1.5">
-                {{-- Lien détail --}}
                 <a href="{{ route('grand-livre.detail') }}"
                    class="px-2 py-1 bg-purple-100 text-purple-700 rounded text-[10px] hover:bg-purple-200 border border-purple-200">
                     <i class="fas fa-list mr-1"></i>Grand Livre
                 </a>
-
-                {{-- IMPRIMER — intentionnellement hors du no-print car c'est un bouton d'action 
-                <button onclick="window.print()" style="background-color : black"
-                        class="px-2 py-1 bg-black-600 text-white rounded text-[10px] hover:bg-black-700 border border-black-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                    <i class="fas fa-print mr-1"></i>Imprimer
-                </button> --}}
-
-                {{-- PDF 
-                <button wire:click="exportPdf"
-                        :disabled="exporting"
-                        class="px-2 py-1 bg-red-600 text-white rounded text-[10px] hover:bg-red-700 border border-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                    <span wire:loading wire:target="exportPdf">
-                        <i class="fas fa-spinner fa-spin mr-1"></i>PDF…
-                    </span>
-                    <span wire:loading.remove wire:target="exportPdf">
-                        <i class="fas fa-file-pdf mr-1"></i>PDF
-                    </span>
-                </button> --}}
 
                 {{-- Excel --}}
                 <button wire:click="exportExcel"
@@ -116,6 +88,9 @@
         </div>
     </div>
 
+    {{-- ═══════════════════════════════════════════
+         FILTRES
+    ═══════════════════════════════════════════ --}}
     <div class="filter-card mx-3 mt-1 no-print">
         <div class="grid grid-cols-4 gap-2 items-end">
             <div>
@@ -128,12 +103,7 @@
                 <input type="date" wire:model.live="dateFin"
                        class="w-full px-1 py-0.5 border border-gray-300 rounded text-[9px] bg-white">
             </div>
-            <!--<div>
-                <label class="text-[8px] text-gray-600 block mb-0.5 font-medium">Exercice</label>
-                <input type="number" wire:model.live="exercice" placeholder="Année"
-                       class="w-full px-1 py-0.5 border border-gray-300 rounded text-[9px] bg-white">
-            </div>-->
-            <div>
+            <div class="flex items-end">
                 <button wire:click="resetFilters"
                         class="px-2 py-0.5 bg-gray-300 text-gray-700 rounded text-[9px] hover:bg-gray-400 border border-gray-400">
                     <i class="fas fa-redo mr-1"></i>Reset
@@ -159,9 +129,9 @@
             </div>
 
             <button @click="showModal = true"
-                class="px-2 py-0.5 bg-blue-600 text-white rounded text-[9px] hover:bg-blue-700">
-            <i class="fas fa-sliders-h mr-1"></i>Filtrer les comptes
-        </button>
+                    class="px-2 py-0.5 bg-blue-600 text-white rounded text-[9px] hover:bg-blue-700">
+                <i class="fas fa-sliders-h mr-1"></i>Filtrer les comptes
+            </button>
         </div>
 
         {{-- Aperçu tags --}}
@@ -182,80 +152,136 @@
         @endif
     </div>
 
-    <div x-show="showModal" x-cloak @keydown.escape.window="showModal = false" class="no-print">
-    <div class="modal-bg" @click="showModal = false"></div>
-    <div class="modal-box">
-        <div class="flex justify-between items-center mb-3">
-            <h3 class="font-semibold text-gray-800 text-[11px]">
-                Sélectionner les comptes
-                @if(count($tempSelectedAccounts) > 0)
-                    <span class="ml-2 text-blue-700 bg-blue-100 px-2 py-0.5 rounded text-[9px]">
-                        {{ count($tempSelectedAccounts) }} sélectionné(s)
-                    </span>
-                @endif
-            </h3>
-            <button @click="showModal = false" class="text-gray-500 hover:text-gray-800 text-lg leading-none">&times;</button>
-        </div>
+    {{-- ═══════════════════════════════════════════
+         MODAL SÉLECTION COMPTES
+         Toute la logique de coche est gérée en Alpine JS
+         → zéro round-trip Livewire pendant la sélection
+         → UN seul appel Livewire au clic "Valider"
+    ═══════════════════════════════════════════ --}}
+    <div x-show="showModal"
+         x-cloak
+         @keydown.escape.window="showModal = false"
+         class="no-print"
+         x-data="{
+             tempSelected: @js($tempSelectedAccounts),
+             search: '',
+             allCodes: @js($accountsList->pluck('code')->toArray()),
+             toggle(code) {
+                 const idx = this.tempSelected.indexOf(code);
+                 if (idx === -1) this.tempSelected.push(code);
+                 else this.tempSelected.splice(idx, 1);
+             },
+             isSelected(code) {
+                 return this.tempSelected.includes(code);
+             },
+             selectAll() {
+                 this.tempSelected = [...this.allCodes];
+             },
+             clearAll() {
+                 this.tempSelected = [];
+             },
+             validate() {
+                 $wire.set('tempSelectedAccounts', this.tempSelected);
+                 $wire.call('validateAccountSelection');
+                 showModal = false;
+             }
+         }"
+         @open-modal.window="
+             tempSelected = @js($tempSelectedAccounts);
+             search = '';
+         ">
 
-        {{-- Boutons d'action rapide --}}
-        <div class="mb-3 flex items-center gap-2">
-            <button wire:click="selectAllAccounts"
-                    class="px-2 py-1 bg-blue-600 text-white rounded text-[9px] hover:bg-blue-700">
-                <i class="fas fa-check-double mr-1"></i>Tout sélectionner
-            </button>
-            <button wire:click="clearSelectedAccounts"
-                    class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-[9px] hover:bg-gray-300">
-                <i class="fas fa-times mr-1"></i>Tout désélectionner
-            </button>
-        </div>
+        <div class="modal-bg" @click="showModal = false"></div>
 
-        {{-- Liste des comptes --}}
-        <div class="border border-gray-200 rounded overflow-y-auto" style="max-height: 60vh;">
-            @foreach($accountsList as $account)
-                @php $isSelected = in_array($account->code, $tempSelectedAccounts); @endphp
-                <div class="account-item flex items-center {{ $isSelected ? 'selected' : '' }}"
-                     wire:click="toggleAccount('{{ $account->code }}')"
-                     wire:key="account-{{ $account->code }}">
-                    {{-- Indicateur visuel --}}
-                    <div class="w-4 h-4 mr-2 flex-shrink-0 flex items-center justify-center rounded border
-                                {{ $isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-400 bg-white' }}">
-                        @if($isSelected)
-                            <i class="fas fa-check text-white" style="font-size:8px"></i>
-                        @endif
-                    </div>
-                    <div class="flex-1">
-                        <span class="font-semibold text-gray-800">{{ $account->code }}</span>
-                        <span class="text-gray-600 ml-1">{{ Str::limit($account->intitule, 45) }}</span>
-                    </div>
-                    <div class="text-[8px] text-gray-400 ml-2 flex-shrink-0">
-                        {{ $account->total_ecritures }} écr.
-                    </div>
-                </div>
-            @endforeach
-        </div>
-
-        <div class="mt-3 flex justify-between items-center">
-            <span class="text-[9px] text-gray-500">
-                {{ count($accountsList) }} compte(s) disponible(s)
-            </span>
-            <div class="flex gap-2">
+        <div class="modal-box">
+            {{-- Titre --}}
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="font-semibold text-gray-800 text-[11px]">
+                    Sélectionner les comptes
+                    <span class="ml-2 text-blue-700 bg-blue-100 px-2 py-0.5 rounded text-[9px]"
+                          x-text="tempSelected.length + ' sélectionné(s)'"></span>
+                </h3>
                 <button @click="showModal = false"
-                        class="px-3 py-1 bg-gray-500 text-white rounded text-[9px] hover:bg-gray-600">
-                    <i class="fas fa-times mr-1"></i>Annuler
+                        class="text-gray-500 hover:text-gray-800 text-lg leading-none">&times;</button>
+            </div>
+
+            {{-- Recherche --}}
+            <input type="text"
+                   x-model="search"
+                   placeholder="Rechercher par code ou intitulé…"
+                   class="w-full mb-2 px-2 py-1 border border-gray-300 rounded text-[9px] focus:outline-none focus:border-blue-400">
+
+            {{-- Boutons rapides --}}
+            <div class="mb-2 flex items-center gap-2">
+                <button @click="selectAll()"
+                        class="px-2 py-1 bg-blue-600 text-white rounded text-[9px] hover:bg-blue-700">
+                    <i class="fas fa-check-double mr-1"></i>Tout sélectionner
                 </button>
-                <button wire:click="validateAccountSelection"
-                        class="px-3 py-1 bg-green-600 text-white rounded text-[9px] hover:bg-green-700">
-                    <i class="fas fa-check mr-1"></i>Valider
+                <button @click="clearAll()"
+                        class="px-2 py-1 bg-gray-200 text-gray-700 rounded text-[9px] hover:bg-gray-300">
+                    <i class="fas fa-times mr-1"></i>Tout désélectionner
                 </button>
+            </div>
+
+            {{-- Liste des comptes --}}
+            <div class="border border-gray-200 rounded overflow-y-auto" style="max-height: 52vh;">
+                @foreach($accountsList as $account)
+                    <div class="account-item flex items-center"
+                         :class="{ 'selected': isSelected('{{ $account->code }}') }"
+                         x-show="
+                             search === '' ||
+                             '{{ strtolower($account->code . ' ' . $account->intitule) }}'.includes(search.toLowerCase())
+                         "
+                         @click="toggle('{{ $account->code }}')"
+                         wire:key="acc-{{ $account->code }}">
+
+                        {{-- Checkbox visuelle --}}
+                        <div class="w-4 h-4 mr-2 flex-shrink-0 flex items-center justify-center rounded border"
+                             :class="isSelected('{{ $account->code }}')
+                                 ? 'bg-blue-600 border-blue-600'
+                                 : 'border-gray-400 bg-white'">
+                            <template x-if="isSelected('{{ $account->code }}')">
+                                <i class="fas fa-check text-white" style="font-size:7px;"></i>
+                            </template>
+                        </div>
+
+                        <div class="flex-1 min-w-0">
+                            <span class="font-semibold text-gray-800">{{ $account->code }}</span>
+                            <span class="text-gray-600 ml-1 truncate">{{ Str::limit($account->intitule, 45) }}</span>
+                        </div>
+
+                        <div class="text-[8px] text-gray-400 ml-2 flex-shrink-0">
+                            {{ number_format($account->total_ecritures, 0, ',', ' ') }} écr.
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+
+            {{-- Pied de modal --}}
+            <div class="mt-3 flex justify-between items-center">
+                <span class="text-[9px] text-gray-500">
+                    {{ count($accountsList) }} compte(s) disponible(s)
+                </span>
+                <div class="flex gap-2">
+                    <button @click="showModal = false"
+                            class="px-3 py-1 bg-gray-500 text-white rounded text-[9px] hover:bg-gray-600">
+                        <i class="fas fa-times mr-1"></i>Annuler
+                    </button>
+                    <button @click="validate()"
+                            class="px-3 py-1 bg-green-600 text-white rounded text-[9px] hover:bg-green-700">
+                        <i class="fas fa-check mr-1"></i>Valider
+                    </button>
+                </div>
             </div>
         </div>
     </div>
-</div>
 
-    
+    {{-- ═══════════════════════════════════════════
+         ZONE PRINCIPALE
+    ═══════════════════════════════════════════ --}}
     <div class="flex-1 min-h-0 bg-white mx-3 mb-1 border border-gray-300 rounded" id="print-zone">
 
-        {{-- En-tête affiché uniquement à l'impression --}}
+        {{-- En-tête impression --}}
         <div class="print-only" style="padding:8px 0 6px; border-bottom:2px solid #2c3e50; margin-bottom:6px;">
             <div style="font-size:12pt; font-weight:bold; color:#2c3e50;">GRAND LIVRE GÉNÉRAL</div>
             <div style="font-size:8pt; color:#555; margin-top:3px;">
@@ -349,23 +375,86 @@
                         @endforeach
                     </tbody>
 
+                    {{-- ─── PAGINATION NUMÉROTÉE ─── --}}
                     <tfoot>
-                        <tr id="sentinel-general">
-                            <td colspan="7" class="px-2 py-2 text-center bg-gray-50">
-                                @if($hasMore)
-                                    <span class="inline-flex items-center gap-2 text-[9px] text-gray-500">
-                                        <svg class="animate-spin h-3 w-3 text-blue-500" fill="none" viewBox="0 0 24 24">
-                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                                        </svg>
-                                        Chargement…
+                        <tr>
+                            <td colspan="7" class="px-3 py-2 bg-gray-50 border-t border-gray-200 no-print">
+                                <div class="flex items-center justify-between">
+
+                                    {{-- Info page --}}
+                                    <span class="text-[8px] text-gray-500">
+                                        Page <strong>{{ $currentPage }}</strong> / <strong>{{ $totalPages }}</strong>
+                                        &nbsp;—&nbsp; {{ $totalCount }} compte(s) au total
+                                        &nbsp;—&nbsp; {{ $perPage }} par page
                                     </span>
-                                @else
-                                    <span class="text-[9px] text-gray-400">
-                                        <i class="fas fa-check-circle mr-1 text-green-500"></i>
-                                        Tous les comptes affichés ({{ $totalCount }})
-                                    </span>
-                                @endif
+
+                                    {{-- Contrôles --}}
+                                    <div class="flex items-center gap-1" wire:loading.class="opacity-50 pointer-events-none">
+
+                                        {{-- ← Première --}}
+                                        <button
+                                            {{ $currentPage <= 1 ? 'disabled' : 'wire:click=goToPage(1)' }}
+                                            class="pagination-btn {{ $currentPage <= 1 ? 'opacity-30 cursor-not-allowed' : '' }}"
+                                            title="Première page">«</button>
+
+                                        {{-- ← Précédent --}}
+                                        <button
+                                            {{ $currentPage <= 1 ? 'disabled' : 'wire:click=previousPage' }}
+                                            class="pagination-btn {{ $currentPage <= 1 ? 'opacity-30 cursor-not-allowed' : '' }}"
+                                            title="Page précédente">‹</button>
+
+                                        {{-- Pages numérotées (fenêtre glissante ±3) --}}
+                                        @php
+                                            $w     = 3;
+                                            $start = max(1, $currentPage - $w);
+                                            $end   = min($totalPages, $currentPage + $w);
+                                        @endphp
+
+                                        @if($start > 1)
+                                            <button wire:click="goToPage(1)" class="pagination-btn">1</button>
+                                            @if($start > 2)
+                                                <span class="text-[9px] text-gray-400 px-1">…</span>
+                                            @endif
+                                        @endif
+
+                                        @for($p = $start; $p <= $end; $p++)
+                                            <button wire:click="goToPage({{ $p }})"
+                                                    class="pagination-btn {{ $p === $currentPage ? 'active' : '' }}">
+                                                {{ $p }}
+                                            </button>
+                                        @endfor
+
+                                        @if($end < $totalPages)
+                                            @if($end < $totalPages - 1)
+                                                <span class="text-[9px] text-gray-400 px-1">…</span>
+                                            @endif
+                                            <button wire:click="goToPage({{ $totalPages }})" class="pagination-btn">
+                                                {{ $totalPages }}
+                                            </button>
+                                        @endif
+
+                                        {{-- Suivant → --}}
+                                        <button
+                                            {{ $currentPage >= $totalPages ? 'disabled' : 'wire:click=nextPage' }}
+                                            class="pagination-btn {{ $currentPage >= $totalPages ? 'opacity-30 cursor-not-allowed' : '' }}"
+                                            title="Page suivante">›</button>
+
+                                        {{-- Dernière → --}}
+                                        <button
+                                            {{ $currentPage >= $totalPages ? 'disabled' : 'wire:click=goToPage('.$totalPages.')' }}
+                                            class="pagination-btn {{ $currentPage >= $totalPages ? 'opacity-30 cursor-not-allowed' : '' }}"
+                                            title="Dernière page">»</button>
+
+                                        {{-- Spinner chargement --}}
+                                        <span wire:loading wire:target="goToPage,nextPage,previousPage"
+                                              class="ml-1 text-blue-500">
+                                            <svg class="animate-spin h-3 w-3 inline" fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                            </svg>
+                                        </span>
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                     </tfoot>
@@ -373,27 +462,27 @@
             @endif
         </div>
 
-        {{-- Barre de stats --}}
+        {{-- ─── BARRE DE STATS ─── --}}
         @if($totalCount > 0)
             <div class="stats-bar flex items-center justify-around no-print">
                 <div class="stat-item">
-                    <div class="stat-label">Comptes</div>
-                    <div class="stat-value">{{ number_format($recapStats['total_comptes'], 0, ',', ' ') }}</div>
+                    <div class="stat-label">Comptes (total)</div>
+                    <div class="stat-value">{{ number_format($totalCount, 0, ',', ' ') }}</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-label">Écritures</div>
+                    <div class="stat-label">Écritures (page)</div>
                     <div class="stat-value">{{ number_format($recapStats['total_ecritures'], 0, ',', ' ') }}</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-label">Débit</div>
+                    <div class="stat-label">Débit (page)</div>
                     <div class="stat-value">{{ number_format($recapStats['total_debit'], 0, ',', ' ') }}</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-label">Crédit</div>
+                    <div class="stat-label">Crédit (page)</div>
                     <div class="stat-value">{{ number_format($recapStats['total_credit'], 0, ',', ' ') }}</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-label">Solde</div>
+                    <div class="stat-label">Solde (page)</div>
                     <div class="flex items-center gap-1">
                         <span class="stat-value">{{ number_format($recapStats['solde_global_absolu'], 0, ',', ' ') }}</span>
                         <span class="text-[7px] font-bold {{ $recapStats['is_debiteur'] ? 'text-red-600' : 'text-green-600' }}">
@@ -401,15 +490,19 @@
                         </span>
                     </div>
                 </div>
+                <div class="stat-item">
+                    <div class="stat-label">Page</div>
+                    <div class="stat-value">{{ $currentPage }} / {{ $totalPages }}</div>
+                </div>
             </div>
 
-            {{-- Récap imprimé en bas de tableau --}}
+            {{-- Récap impression --}}
             <div class="print-only" style="border-top:2px solid #2c3e50; padding-top:8px; margin-top:8px;">
                 <table style="width:55%; margin:0 auto; border-collapse:collapse; font-size:8pt;">
                     <tr style="background:#2c3e50; color:#fff;">
                         <th colspan="2" style="padding:4px 8px; text-align:center;">RÉCAPITULATIF</th>
                     </tr>
-                    <tr><td style="padding:3px 8px;">Total comptes</td><td style="text-align:right; padding:3px 8px; font-weight:bold;">{{ $recapStats['total_comptes'] }}</td></tr>
+                    <tr><td style="padding:3px 8px;">Total comptes</td><td style="text-align:right; padding:3px 8px; font-weight:bold;">{{ $totalCount }}</td></tr>
                     <tr style="background:#f5f5f5;"><td style="padding:3px 8px;">Total Débit</td><td style="text-align:right; padding:3px 8px; font-weight:bold;">{{ number_format($recapStats['total_debit'], 0, ',', ' ') }}</td></tr>
                     <tr><td style="padding:3px 8px;">Total Crédit</td><td style="text-align:right; padding:3px 8px; font-weight:bold;">{{ number_format($recapStats['total_credit'], 0, ',', ' ') }}</td></tr>
                     <tr style="background:#dbeafe; font-weight:bold;">
@@ -426,66 +519,21 @@
 
     <style media="print">
         @page { size: landscape; margin: 0.7cm; }
-
-        /* 1. Tout masquer par défaut */
         body * { visibility: hidden; }
-
-        /* 2. Révéler uniquement #print-zone et ses enfants */
-        #print-zone,
-        #print-zone * { visibility: visible; }
-
-        /* 3. Positionner #print-zone en haut à gauche */
-        #print-zone {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            margin: 0 !important;
-            border: none !important;
-        }
-
-        /* 4. Afficher les blocs print-only, masquer no-print */
+        #print-zone, #print-zone * { visibility: visible; }
+        #print-zone { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; margin: 0 !important; border: none !important; }
         .no-print { display: none !important; visibility: hidden !important; }
         .print-only { visibility: visible !important; display: block !important; }
-
-        /* 5. Tableau pleine largeur sans scroll */
         .table-container { height: auto !important; overflow: visible !important; }
         .stats-bar { display: none !important; }
-
-        /* 6. Couleurs forcées */
-        th {
-            background-color: #333 !important;
-            color: #fff !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-        .account-header {
-            background-color: #dde3ea !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-        .total-row {
-            background-color: #e8ecf0 !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-        .solde-debit {
-            background-color: #fde8ea !important;
-            color: #c00 !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-        .solde-credit {
-            background-color: #e8fde8 !important;
-            color: #060 !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-
-        /* 7. Sauts de page */
+        th { background-color: #333 !important; color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .account-header { background-color: #dde3ea !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .total-row { background-color: #e8ecf0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .solde-debit { background-color: #fde8ea !important; color: #c00 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .solde-credit { background-color: #e8fde8 !important; color: #060 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         thead { display: table-header-group; }
         tfoot { display: table-footer-group; }
-        tr    { page-break-inside: avoid; }
+        tr { page-break-inside: avoid; }
     </style>
 
     @push('scripts')

@@ -41,10 +41,13 @@ class Index extends Component
     
     public function mount()
     {
+        $exo = DB::table('exercices')->where('statut', 1)->first();
         $this->entreprise = auth()->user()->entreprise;
-        $this->dateDebut = '2024-01-01';
-        $this->dateFin = '2024-12-31';
-        $this->exercice = 2024;
+        //$this->dateDebut = '2024-01-01';
+        //$this->dateFin = '2024-12-31';
+        $this->dateDebut = $exo->date_debut ?? '2024-12-31';
+        $this->dateFin = $exo->date_fin ?? '2024-12-31';
+        $this->exercice = date('Y', strtotime($exo->date_debut));
         $this->balanceType = '4colonnes';
     }
     
@@ -456,10 +459,14 @@ class Index extends Component
     
     public function resetFilters()
     {
+        $exo = DB::table('exercices')->where('statut', 1)->first();
         $this->reset(['dateDebut', 'dateFin', 'exercice', 'search']);
-        $this->dateDebut = '2024-01-01';
-        $this->dateFin = '2024-12-31';
-        $this->exercice = 2024;
+        //$this->dateDebut = '2024-01-01';
+        //$this->dateFin = '2024-12-31';
+        //$this->exercice = 2024;
+        $this->dateDebut = $exo->date_debut ?? '2024-12-31';
+        $this->dateFin = $exo->date_fin ?? '2024-12-31';
+        $this->exercice = date('Y', strtotime($exo->date_debut));
         $this->resetPage();
     }
     

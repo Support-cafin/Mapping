@@ -80,8 +80,6 @@ class DualPanel extends Component
     public $deleteAllCount = 0;
     public $deleteAllWithData = 0;
     public $deleteAllWithMappings = 0;
-    
-    public $editAccountType = 'old';
 
     public function mount()
     {
@@ -279,52 +277,11 @@ public function forceDeleteAllAccounts()
     $this->closeDeleteAllModal();
 }
     
-    /**
- * Ouvrir le modal de modification pour un ancien compte
- */
-public function openEditModal($accountId)
-{
-    $account = OldAccount::find($accountId);
     
-    if (!$account) {
-        $this->dispatch('notify', [
-            'type' => 'error',
-            'message' => 'Compte introuvable'
-        ]);
-        return;
-    }
-    
-    // Définir le type de compte
-    $this->editAccountType = 'old';
-    
-    // Vérifier si le compte peut être modifié
-    if (!$account->canBeModified()) {
-        $this->dispatch('notify', [
-            'type' => 'warning',
-            'message' => 'Ce compte est mappé. Vous pouvez seulement modifier son libellé.'
-        ]);
-        
-        // Si mappé, on ne permet que la modification du libellé
-        $this->accountToEdit = $account;
-        $this->editAccountIntitule = $account->intitule;
-        $this->editAccountCode = $account->code; // Non modifiable
-        $this->showEditAccountModal = true;
-        return;
-    }
-    
-    // Si non mappé, on peut tout modifier
-    $this->accountToEdit = $account;
-    $this->editAccountCode = $account->code;
-    $this->editAccountIntitule = $account->intitule;
-    $this->editAccountClasse = $account->classe;
-    $this->editAccountGroupe = $account->groupe;
-    $this->editAccountParentId = $account->parent_id;
-    $this->showEditAccountModal = true;
-}
     
     // === NOUVELLES MÉTHODES POUR MODIFICATION ===
     
-    /*public function openEditModal($accountId)
+    public function openEditModal($accountId)
     {
         $account = OldAccount::find($accountId);
         
@@ -359,50 +316,9 @@ public function openEditModal($accountId)
         $this->editAccountGroupe = $account->groupe;
         $this->editAccountParentId = $account->parent_id;
         $this->showEditAccountModal = true;
-    }*/
-    public function openEditNewModal($accountId)
-{
-    $account = NewAccount::find($accountId);
-    
-    if (!$account) {
-        $this->dispatch('notify', [
-            'type' => 'error',
-            'message' => 'Compte introuvable'
-        ]);
-        return;
     }
     
-    // AJOUT IMPORTANT : Définir le type de compte
-    $this->editAccountType = 'new';
-    
-    // Vérifier si le nouveau compte est mappé
-    $isMapped = $account->mappings()->exists();
-    
-    if ($isMapped) {
-        $this->dispatch('notify', [
-            'type' => 'warning',
-            'message' => 'Ce compte est mappé. Vous pouvez seulement modifier son libellé.'
-        ]);
-        
-        // Si mappé, on ne permet que la modification du libellé
-        $this->accountToEdit = $account;
-        $this->editAccountIntitule = $account->intitule;
-        $this->editAccountCode = $account->code; // Non modifiable
-        $this->showEditAccountModal = true;
-        return;
-    }
-    
-    // Si non mappé, on peut tout modifier
-    $this->accountToEdit = $account;
-    $this->editAccountCode = $account->code;
-    $this->editAccountIntitule = $account->intitule;
-    $this->editAccountClasse = $account->classe;
-    $this->editAccountGroupe = $account->groupe;
-    $this->editAccountParentId = $account->parent_id;
-    $this->showEditAccountModal = true;
-}
-    
-    /*public function updateAccount()
+    public function updateAccount()
     {
         $exo = DB::table('exercices')->where('statut', 1)->first();
         $this->validate([
@@ -456,71 +372,7 @@ public function openEditModal($accountId)
         $this->closeEditModal();
         $this->loadData();
         $this->loadParentLists();
-    }*/
-    public function updateAccount()
-{
-    $exo = DB::table('exercices')->where('statut', 1)->first();
-    
-    if (!$this->accountToEdit) {
-        return;
     }
-    
-    // Déterminer le type de compte
-    $type = $this->editAccountType ?? 'old';
-    $model = $type === 'old' ? OldAccount::class : NewAccount::class;
-    
-    // Règles de validation différentes selon le type
-    $rules = [
-        'editAccountIntitule' => 'required|string|max:255',
-    ];
-    
-    // Seulement si non mappé, on peut modifier le code
-    $isMapped = $type === 'old' 
-        ? $this->accountToEdit->isMapped() 
-        : $this->accountToEdit->mappings()->exists();
-    
-    if (!$isMapped) {
-        $rules['editAccountCode'] = [
-            'required',
-            'string',
-            'max:20',
-            Rule::unique($type === 'old' ? 'old_accounts' : 'new_accounts', 'code')
-                ->where('entreprise_id', $this->entreprise->id)
-                ->where('exercice_id', $exo->id ?? '')
-                ->ignore($this->accountToEdit->id)
-        ];
-        $rules['editAccountParentId'] = [
-            'nullable',
-            Rule::exists($type === 'old' ? 'old_accounts' : 'new_accounts', 'id')
-                ->where('entreprise_id', $this->entreprise->id)
-                ->where('exercice_id', $exo->id ?? '')
-        ];
-    }
-    
-    $this->validate($rules);
-    
-    // Préparer les données à mettre à jour
-    $data = ['intitule' => $this->editAccountIntitule];
-    
-    if (!$isMapped) {
-        $data['code'] = $this->editAccountCode;
-        $data['parent_id'] = $this->editAccountParentId;
-    }
-    
-    // Mise à jour
-    $this->accountToEdit->update($data);
-    
-    $this->dispatch('notify', [
-        'type' => 'success',
-        'message' => $isMapped 
-            ? 'Libellé du compte mappé mis à jour avec succès'
-            : 'Compte mis à jour avec succès'
-    ]);
-    
-    $this->closeEditModal();
-    $this->loadData();
-    $this->loadParentLists();
-}
     
     public function closeEditModal()
     {
@@ -540,7 +392,7 @@ public function openEditModal($accountId)
     
     // === NOUVELLES MÉTHODES POUR SUPPRESSION ===
     
-   /* public function openDeleteModal($accountId, $type = 'old')
+    public function openDeleteModal($accountId, $type = 'old')
 {
     $exo = DB::table('exercices')->where('statut', 1)->first();
     
@@ -577,55 +429,9 @@ public function openEditModal($accountId)
     ];
     
     $this->showDeleteAccountModal = true;
-}*/
-public function openDeleteModal($accountId, $type = 'old')
-{
-    $exo = DB::table('exercices')->where('statut', 1)->first();
-    
-    if ($type === 'old') {
-        $account = OldAccount::with(['mappings', 'children'])->where('exercice_id', $exo->id ?? '')->find($accountId);
-        
-        $hasData = $account->hasData();
-        $isMapped = $account->isMapped();
-        $mappingsCount = $account->mappings->count();
-    } else {
-        $account = NewAccount::with(['mappings', 'children'])->where('exercice_id', $exo->id ?? '')->find($accountId);
-        
-        $hasData = false; // Les nouveaux comptes n'ont pas de données directes
-        $isMapped = $account->mappings()->exists();
-        $mappingsCount = $account->mappings()->count();
-    }
-    
-    if (!$account) {
-        $this->dispatch('notify', [
-            'type' => 'error',
-            'message' => 'Compte introuvable'
-        ]);
-        return;
-    }
-    
-    $hasChildren = $account->children->isNotEmpty();
-    $canDelete = ($type === 'old') 
-        ? $account->canBeDeleted() 
-        : (!$isMapped && !$hasChildren);
-    
-    $this->accountToDelete = $account;
-    $this->deleteAccountInfo = [
-        'code' => $account->code,
-        'intitule' => $account->intitule,
-        'type' => $type,
-        'canDelete' => $canDelete,
-        'isMapped' => $isMapped,
-        'hasChildren' => $hasChildren,
-        'hasData' => $hasData, // Maintenant toujours défini
-        'childrenCount' => $account->children->count(),
-        'mappingsCount' => $mappingsCount,
-    ];
-    
-    $this->showDeleteAccountModal = true;
 }
     
-    /*public function deleteAccount()
+    public function deleteAccount()
 {
     if (!$this->accountToDelete) {
         return;
@@ -665,97 +471,6 @@ public function openDeleteModal($accountId, $type = 'old')
     }
     
     // Vérifier les enfants (valable pour les deux types)
-    if ($this->accountToDelete->children->isNotEmpty()) {
-        $this->dispatch('notify', [
-            'type' => 'error',
-            'message' => 'Impossible de supprimer un compte ayant des sous-comptes'
-        ]);
-        $this->closeDeleteModal();
-        return;
-    }
-    
-    if ($type === 'new') {
-        // Vérifications pour nouveau compte
-        if ($this->accountToDelete->mappings()->exists()) {
-            $this->dispatch('notify', [
-                'type' => 'error',
-                'message' => 'Impossible de supprimer un compte utilisé dans des mappings'
-            ]);
-            $this->closeDeleteModal();
-            return;
-        }
-    }
-    
-    // Vérifier les enfants (valable pour les deux types)
-    if ($this->accountToDelete->children->isNotEmpty()) {
-        $this->dispatch('notify', [
-            'type' => 'error',
-            'message' => 'Impossible de supprimer un compte ayant des sous-comptes'
-        ]);
-        $this->closeDeleteModal();
-        return;
-    }
-    
-    try {
-        $this->accountToDelete->delete();
-        
-        $this->dispatch('notify', [
-            'type' => 'success',
-            'message' => 'Compte supprimé avec succès'
-        ]);
-        
-        $this->closeDeleteModal();
-        $this->loadData();
-        $this->loadParentLists();
-        
-    } catch (\Exception $e) {
-        $this->dispatch('notify', [
-            'type' => 'error',
-            'message' => 'Erreur lors de la suppression: ' . $e->getMessage()
-        ]);
-    }
-}*/
-
-public function deleteAccount()
-{
-    if (!$this->accountToDelete) {
-        return;
-    }
-    
-    $type = $this->deleteAccountInfo['type'] ?? 'old';
-    
-    if ($type === 'old') {
-        // Vérifications pour ancien compte
-        if ($this->accountToDelete->isMapped()) {
-            $this->dispatch('notify', [
-                'type' => 'error',
-                'message' => 'Impossible de supprimer un compte mappé'
-            ]);
-            $this->closeDeleteModal();
-            return;
-        }
-        
-        if (!$this->accountToDelete->canBeDeleted()) {
-            $this->dispatch('notify', [
-                'type' => 'error',
-                'message' => 'Impossible de supprimer un compte contenant des données'
-            ]);
-            $this->closeDeleteModal();
-            return;
-        }
-    } else { // type === 'new'
-        // Vérifications pour nouveau compte
-        if ($this->accountToDelete->mappings()->exists()) {
-            $this->dispatch('notify', [
-                'type' => 'error',
-                'message' => 'Impossible de supprimer un compte utilisé dans des mappings'
-            ]);
-            $this->closeDeleteModal();
-            return;
-        }
-    }
-    
-    // Vérifier les enfants (une seule fois, valable pour les deux types)
     if ($this->accountToDelete->children->isNotEmpty()) {
         $this->dispatch('notify', [
             'type' => 'error',
@@ -1843,85 +1558,6 @@ public function replaceMapping($oldId, $newId)
     {
         $this->accountParentId = null;
     }
-    
-    // === POUR LES NOUVEAUX COMPTES ===
-
-/*public function openEditNewModal($accountId)
-{
-    $account = NewAccount::find($accountId);
-    
-    if (!$account) {
-        $this->dispatch('notify', [
-            'type' => 'error',
-            'message' => 'Compte introuvable'
-        ]);
-        return;
-    }
-    
-    // Vérifier si le nouveau compte peut être modifié
-    $isMapped = $account->mappings()->exists();
-    
-    if ($isMapped) {
-        $this->dispatch('notify', [
-            'type' => 'warning',
-            'message' => 'Ce compte est mappé. Vous pouvez seulement modifier son libellé.'
-        ]);
-        
-        // Si mappé, on ne permet que la modification du libellé
-        $this->accountToEdit = $account;
-        $this->editAccountIntitule = $account->intitule;
-        $this->editAccountCode = $account->code; // Non modifiable
-        $this->editAccountType = 'new'; // <- AJOUTER CETTE PROPRIÉTÉ
-        $this->showEditAccountModal = true;
-        return;
-    }
-    
-    // Si non mappé, on peut tout modifier
-    $this->accountToEdit = $account;
-    $this->editAccountCode = $account->code;
-    $this->editAccountIntitule = $account->intitule;
-    $this->editAccountClasse = $account->classe;
-    $this->editAccountGroupe = $account->groupe;
-    $this->editAccountParentId = $account->parent_id;
-    $this->editAccountType = 'new'; // <- AJOUTER CETTE PROPRIÉTÉ
-    $this->showEditAccountModal = true;
-}*/
-
-public function openDeleteNewModal($accountId)
-{
-    $exo = DB::table('exercices')->where('statut', 1)->first();
-    $account = NewAccount::with(['mappings', 'children'])->where('exercice_id', $exo->id ?? '')->find($accountId);
-    
-    if (!$account) {
-        $this->dispatch('notify', [
-            'type' => 'error',
-            'message' => 'Compte introuvable'
-        ]);
-        return;
-    }
-    
-    $isMapped = $account->mappings()->exists();
-    $hasChildren = $account->children->isNotEmpty();
-    $canDelete = !$isMapped && !$hasChildren;
-    
-    $this->accountToDelete = $account;
-    $this->deleteAccountInfo = [
-        'code' => $account->code,
-        'intitule' => $account->intitule,
-        'type' => 'new',
-        'canDelete' => $canDelete,
-        'isMapped' => $isMapped,
-        'hasChildren' => $hasChildren,
-        'childrenCount' => $account->children->count(),
-        'mappingsCount' => $account->mappings()->count(),
-    ];
-    
-    $this->showDeleteAccountModal = true;
-}
-
-// Modifie la méthode updateAccount existante :
-
-
 
     public function render()
     {

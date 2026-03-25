@@ -11,7 +11,14 @@ class Entreprise extends Model
         'code',
         'adresse',
         'telephone',
-        'email'
+        'email',
+        'numero_fiscal',
+        'numero_agrement',
+        'sigle_usuel',
+        'registre_commerce',
+        'numero_ninea',
+        'pays_id',
+        'type_compte'
     ];
 
     public function oldAccounts() 

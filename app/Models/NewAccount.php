@@ -46,6 +46,11 @@ class NewAccount extends Model
     {
         return $this->children()->with('childrenRecursive');
     }
+    
+    public function isMapped()
+    {
+        return $this->mappings()->exists();
+    }
 
     
     protected static function boot()

@@ -46,7 +46,7 @@ class FormulaireDonateur extends Component
         'signature_representant' => 'boolean',
         'notes' => 'nullable|string',
         'statut' => 'nullable|in:enregistré,validé,comptabilisé,annulé',
-        'compte_id' => 'nullable|exists:old_accounts,id',
+        'compte_id' => 'nullable|exists:new_accounts,id',
         'entreprise_id' => 'required|exists:entreprises,id',
     ];
 

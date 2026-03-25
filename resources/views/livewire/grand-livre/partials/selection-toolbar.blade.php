@@ -1,7 +1,7 @@
 <div class="flex justify-between items-center mb-4 bg-gray-50 p-3 rounded-lg">
     <div class="flex items-center space-x-3">
         <span class="text-sm text-gray-600" style="font-size: 11px;">
-            Affichage de <strong>{{ $ecritures->count() }}</strong> sur <strong>{{ number_format($totalCount, 0, ',', ' ') }}</strong> écritures
+           
         </span>
         
         <!-- Bouton Effacer -->

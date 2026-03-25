@@ -128,9 +128,9 @@
 
         </div>-->
 
-
+        @php $ong = DB::table('entreprises')->where('id', Auth::user()->entreprise_id)->where('type_compte', 'premium')->first(); @endphp
         <!-- 🔐 ADMIN -->
-        @if(auth()->user()->is_Super_admin)
+        @if($ong)
             <div class="pt-6 mt-6 border-t border-gray-100">
                 <p class="px-4 mb-2 text-[11px] font-semibold text-gray-400 uppercase">
                     Administration
@@ -139,18 +139,36 @@
                 <a href="{{ route('admin.entreprises.index') }}"
                    class="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-600 hover:bg-purple-50 transition">
                     <ion-icon name="business-outline" class="text-xl text-purple-500"></ion-icon>
-                    <span class="text-sm font-medium">Entreprises</span>
+                    <span class="text-sm font-medium">Mes Entreprises</span>
                 </a>
 
                 <a href="{{ route('admin.users.index') }}"
                    class="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-600 hover:bg-purple-50 transition">
                     <ion-icon name="people-circle-outline" class="text-xl text-purple-500"></ion-icon>
-                    <span class="text-sm font-medium">Utilisateurs</span>
+                    <span class="text-sm font-medium">Mes Utilisateurs</span>
+                </a>
+            </div>
+        @else
+        <div class="pt-6 mt-6 border-t border-gray-100">
+                <p class="px-4 mb-2 text-[11px] font-semibold text-gray-400 uppercase">
+                    Administration
+                </p>
+
+                <a href="{{ route('admin.entreprises.index') }}"
+                   class="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-600 hover:bg-purple-50 transition">
+                    <ion-icon name="business-outline" class="text-xl text-purple-500"></ion-icon>
+                    <span class="text-sm font-medium">Mon Entreprise</span>
+                </a>
+
+                <a href="{{ route('admin.users.index') }}"
+                   class="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-600 hover:bg-purple-50 transition">
+                    <ion-icon name="people-circle-outline" class="text-xl text-purple-500"></ion-icon>
+                    <span class="text-sm font-medium">Mes Utilisateurs</span>
                 </a>
             </div>
         @endif
         
-        @if(auth()->user()->is_admin)
+        {{-- @if(auth()->user()->is_admin)
             <div class="pt-6 mt-6 border-t border-gray-100">
                 <p class="px-4 mb-2 text-[11px] font-semibold text-gray-400 uppercase">
                     Administration
@@ -163,7 +181,7 @@
                     <span class="text-sm font-medium">Utilisateurs</span>
                 </a>
             </div>
-        @endif
+        @endif --}}
     </nav>
 
     <!-- 👤 FOOTER USER -->
@@ -181,6 +199,6 @@
                 </p>
             </div>
         </div>
-    </div>
+    </div> 
 
 </aside>
