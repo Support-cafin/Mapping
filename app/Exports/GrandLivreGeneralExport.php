@@ -32,7 +32,7 @@ class GrandLivreGeneralExport implements FromQuery, WithHeadings, WithMapping, W
     protected $currentAccount = null;
     protected $accountEcritureCount = 0;
     
-    public function __construct($entrepriseId, $filters)
+    /*public function __construct($entrepriseId, $filters)
     {
         $this->entrepriseId = $entrepriseId;
         $this->filters = $filters;
@@ -46,8 +46,89 @@ class GrandLivreGeneralExport implements FromQuery, WithHeadings, WithMapping, W
         // Pré-calculer les groupes de comptes une seule fois
         $this->accountGroups = $this->getAccountGroups();
         $this->recapStats = $this->calculateRecapStats();
-    }
+    }*/
+    public function __construct($entrepriseId, $filters)
+{
+    $this->entrepriseId = $entrepriseId;
+    $this->filters = $filters;
     
+    if (is_numeric($entrepriseId)) {
+        $this->entreprise = \App\Models\Entreprise::find($entrepriseId);
+    } else {
+        $this->entreprise = $entrepriseId;
+    }
+
+    // 🔍 DIAGNOSTIC TEMPORAIRE
+    $this->diagnostiquerDonneesProblematiques();
+    
+    $this->accountGroups = $this->getAccountGroups();
+    $this->recapStats = $this->calculateRecapStats();
+}
+
+private function diagnostiquerDonneesProblematiques()
+{
+    $chars = ['>', '<', '=', '+', '@'];
+    
+    $rows = DB::table('grand_livres as gl')
+        ->select([
+            'gl.id', 'gl.piece', 'gl.journal_code', 
+            'gl.libelle', 'gl.date_ecriture',
+            'oa.code as old_account_code',
+            'na.code as new_account_code',
+            'na.intitule as new_account_intitule',
+        ])
+        ->leftJoin('account_mappings as am', function($join) {
+            $join->on('gl.old_account_id', '=', 'am.old_account_id')
+                 ->where('am.entreprise_id', $this->entrepriseId);
+        })
+        ->leftJoin('new_accounts as na', 'am.new_account_id', '=', 'na.id')
+        ->leftJoin('old_accounts as oa', 'gl.old_account_id', '=', 'oa.id')
+        ->where('gl.entreprise_id', $this->entrepriseId)
+        ->whereNotNull('na.id')
+        ->where(function($q) {
+            $q->where('gl.libelle',         'REGEXP', '^[><=+@]')
+              ->orWhere('gl.piece',          'REGEXP', '^[><=+@]')
+              ->orWhere('gl.journal_code',   'REGEXP', '^[><=+@]')
+              ->orWhere('oa.code',           'REGEXP', '^[><=+@]')
+              ->orWhere('na.code',           'REGEXP', '^[><=+@]')
+              ->orWhere('na.intitule',       'REGEXP', '^[><=+@]');
+        })
+        ->get();
+
+    if ($rows->isNotEmpty()) {
+        \Log::warning('=== DONNÉES PROBLÉMATIQUES TROUVÉES ===', [
+            'nombre' => $rows->count(),
+            'données' => $rows->toArray(),
+        ]);
+    } else {
+        \Log::info('=== AUCUNE DONNÉE PROBLÉMATIQUE TROUVÉE ===');
+        // Si rien trouvé, chercher avec LIKE pour MySQL/SQLite
+        $rows2 = DB::table('grand_livres as gl')
+            ->select(['gl.id', 'gl.piece', 'gl.libelle', 'na.intitule as new_account_intitule'])
+            ->leftJoin('account_mappings as am', function($join) {
+                $join->on('gl.old_account_id', '=', 'am.old_account_id')
+                     ->where('am.entreprise_id', $this->entrepriseId);
+            })
+            ->leftJoin('new_accounts as na', 'am.new_account_id', '=', 'na.id')
+            ->where('gl.entreprise_id', $this->entrepriseId)
+            ->whereNotNull('na.id')
+            ->where(function($q) {
+                $q->where('na.intitule', 'LIKE', '>%')
+                  ->orWhere('na.intitule', 'LIKE', '<%')
+                  ->orWhere('na.intitule', 'LIKE', '=%')
+                  ->orWhere('gl.libelle',  'LIKE', '>%')
+                  ->orWhere('gl.libelle',  'LIKE', '<%')
+                  ->orWhere('gl.piece',    'LIKE', '>%')
+                  ->orWhere('gl.piece',    'LIKE', '<%');
+            })
+            ->get();
+            
+        \Log::warning('=== RECHERCHE LIKE ===', [
+            'nombre' => $rows2->count(),
+            'données' => $rows2->toArray(),
+        ]);
+    }
+}
     public function query()
     {
         // Construire la requête optimisée
@@ -199,9 +280,22 @@ class GrandLivreGeneralExport implements FromQuery, WithHeadings, WithMapping, W
     
     public function map($row): array
     {
+        
         $output = [];
         $newAccountCode = $row->new_account_code;
+        static $counter = 0;
+        $counter++;
         
+        if ($counter >= 3050 && $counter <= 3070) {
+            \Log::info("Ligne {$counter}", [
+                'new_account_code'     => $row->new_account_code,
+                'new_account_intitule' => $row->new_account_intitule,
+                'piece'                => $row->piece,
+                'journal_code'         => $row->journal_code,
+                'libelle'              => $row->libelle,
+                'old_account_code'     => $row->old_account_code,
+            ]);
+        }
         // Si c'est un nouveau compte
         if ($this->currentAccount !== $newAccountCode) {
             // Si on avait un compte précédent, ajouter son footer
@@ -234,7 +328,7 @@ class GrandLivreGeneralExport implements FromQuery, WithHeadings, WithMapping, W
         return $output;
     }
     
-    protected function getAccountHeader($row): array
+    /*protected function getAccountHeader($row): array
     {
         // CORRECTION: Format correct pour l'en-tête
         return [
@@ -247,9 +341,17 @@ class GrandLivreGeneralExport implements FromQuery, WithHeadings, WithMapping, W
             '', // G: Débit vide
             '', // H: Crédit vide
         ];
-    }
-    
-    protected function getDetailRow($row): array
+    }*/
+    protected function getAccountHeader($row): array
+{
+    return [
+        '', '', '', '',
+        (string) ($row->new_account_code    ?? ''),
+        (string) ($row->new_account_intitule ?? ''),
+        '', '',
+    ];
+}
+    /*protected function getDetailRow($row): array
     {
         // CORRECTION: Format correct pour les écritures détaillées
         return [
@@ -287,8 +389,54 @@ class GrandLivreGeneralExport implements FromQuery, WithHeadings, WithMapping, W
                 $soldeCompte < 0 ? number_format(abs($soldeCompte), 0, '', ' ') : '', // H: Crédit si solde négatif
             ]
         ];
-    }
+    }*/
     
+    protected function getDetailRow($row): array
+{
+    $debit  = (float) ($row->debit  ?? 0);
+    $credit = (float) ($row->credit ?? 0);
+
+    return [
+        $row->date_ecriture
+            ? \Carbon\Carbon::parse($row->date_ecriture)->format('d/m/Y')
+            : '',
+        (string) ($row->piece           ?? ''),
+        (string) ($row->journal_code    ?? ''),
+        (string) ($row->old_account_code ?? ''),
+        '',
+        (string) ($row->libelle ?? ''),
+        $debit  > 0 ? $debit  : '',
+        $credit > 0 ? $credit : '',
+    ];
+}
+
+    protected function getAccountFooter($accountCode): array
+    {
+        $account     = $this->accountGroups[$accountCode];
+        $totalDebit  = (float) ($account['total_debit']  ?? 0);
+        $totalCredit = (float) ($account['total_credit'] ?? 0);
+        $solde       = $totalDebit - $totalCredit;
+    
+        $dateSolde = !empty($this->filters['dateFin'])
+            ? \Carbon\Carbon::parse($this->filters['dateFin'])->format('d/m/Y')
+            : now()->format('d/m/Y');
+    
+        return [
+            [
+                '', '', '', '', '',
+                'TOTAL ' . $accountCode,
+                $totalDebit  > 0 ? $totalDebit  : 0.0,
+                $totalCredit > 0 ? $totalCredit : 0.0,
+            ],
+            [
+                '', '', '', '', '',
+                'SOLDE ' . $accountCode . ' au ' . $dateSolde,
+                $solde > 0 ? (float) abs($solde) : '',
+                $solde < 0 ? (float) abs($solde) : '',
+            ],
+        ];
+    }
+        
     protected function getEmptyRow(): array
     {
         // Ligne de séparation complètement vide
@@ -325,7 +473,7 @@ class GrandLivreGeneralExport implements FromQuery, WithHeadings, WithMapping, W
         $sheet->getStyle('G:H')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
     }
     
-    public function registerEvents(): array
+    /*public function registerEvents(): array
     {
         return [
             AfterSheet::class => function(AfterSheet $event) {
@@ -351,12 +499,79 @@ class GrandLivreGeneralExport implements FromQuery, WithHeadings, WithMapping, W
                 // Ajouter les totaux généraux
                 $this->addGlobalTotals($sheet, $highestRow);
                 
-                // Optimisations
+                // Après addGlobalTotals($sheet, $highestRow) :
+                $sheet->getStyle('G7:H' . ($highestRow + 3))
+                      ->getNumberFormat()
+                      ->setFormatCode('#,##0');
+                
                 $sheet->freezePane('A7');
+                
+                // Optimisations
+                //$sheet->freezePane('A7');
             },
         ];
-    }
+    }*/
+    public function registerEvents(): array
+{
+    return [
+        AfterSheet::class => function(AfterSheet $event) {
+            $sheet = $event->sheet->getDelegate();
+            $highestRow = $sheet->getHighestRow();
+
+            ini_set('memory_limit', '2048M');
+            set_time_limit(300);
+
+            // ✅ CORRECTIF PRINCIPAL : parcourir toute la colonne E
+            // et forcer chaque cellule en type STRING explicite
+            // pour éviter que PhpSpreadsheet interprète ">", "+", "-" comme formule
+            for ($r = 7; $r <= $highestRow; $r++) {
+                $cell = $sheet->getCell('E' . $r);
+                $val  = $cell->getValue();
+
+                if ($val !== null && $val !== '') {
+                    $sheet->setCellValueExplicit(
+                        'E' . $r,
+                        (string) $val,
+                        \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+                    );
+                }
+
+                // Faire pareil pour toutes colonnes susceptibles
+                // de contenir des codes ou libellés avec caractères spéciaux
+                foreach (['A', 'B', 'C', 'D', 'F'] as $col) {
+                    $cell = $sheet->getCell($col . $r);
+                    $val  = $cell->getValue();
+                    if ($val !== null && $val !== '' && !is_numeric($val)) {
+                        $sheet->setCellValueExplicit(
+                            $col . $r,
+                            (string) $val,
+                            \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+                        );
+                    }
+                }
+            }
+
+            $this->addMainTitle($sheet);
+            $this->addPeriodInfo($sheet);
+            $this->addColumnHeaders($sheet);
+            $this->applyDataStyles($sheet, $highestRow);
+            $this->addGlobalTotals($sheet, $highestRow);
+
+            $sheet->freezePane('A7');
+        },
+    ];
+}
     
+    /**
+     * Retourne un objet qui force PhpSpreadsheet à traiter la valeur comme string
+     * même si elle commence par '>', '<', '=', '+', '-', '@'
+     */
+    protected function safeString(?string $value): \PhpOffice\PhpSpreadsheet\RichText\RichText
+    {
+        $rt = new \PhpOffice\PhpSpreadsheet\RichText\RichText();
+        $rt->createText((string) ($value ?? ''));
+        return $rt;
+    }
     protected function addMainTitle(Worksheet $sheet)
     {
         $title = 'GRAND LIVRE GÉNÉRAL';
@@ -447,7 +662,7 @@ class GrandLivreGeneralExport implements FromQuery, WithHeadings, WithMapping, W
         $sheet->getRowDimension(6)->setRowHeight(25);
     }
     
-    protected function applyDataStyles(Worksheet $sheet, $highestRow)
+    /*protected function applyDataStyles(Worksheet $sheet, $highestRow)
     {
         $startRow = 7;
         
@@ -544,9 +759,100 @@ class GrandLivreGeneralExport implements FromQuery, WithHeadings, WithMapping, W
                 ->setBorderStyle(Border::BORDER_THIN)
                 ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FFCCCCCC'));
         }
+    }*/
+    protected function applyDataStyles(Worksheet $sheet, $highestRow)
+{
+    $startRow = 7;
+
+    for ($row = $startRow; $row <= $highestRow; $row++) {
+        
+        // Récupérer les valeurs en gérant RichText
+        $cellE = $sheet->getCell('E' . $row)->getValue();
+        $cellF = $sheet->getCell('F' . $row)->getValue();
+        $cellG = $sheet->getCell('G' . $row)->getValue();
+        $cellH = $sheet->getCell('H' . $row)->getValue();
+
+        // ✅ CORRECTIF CRITIQUE : convertir RichText en string
+        // quand on utilise safeString(), getValue() retourne un objet RichText
+        // strpos() sur un objet = erreur / comportement inattendu
+        if ($cellE instanceof \PhpOffice\PhpSpreadsheet\RichText\RichText) {
+            $cellE = $cellE->getPlainText();
+        }
+        if ($cellF instanceof \PhpOffice\PhpSpreadsheet\RichText\RichText) {
+            $cellF = $cellF->getPlainText();
+        }
+        if ($cellG instanceof \PhpOffice\PhpSpreadsheet\RichText\RichText) {
+            $cellG = $cellG->getPlainText();
+        }
+        if ($cellH instanceof \PhpOffice\PhpSpreadsheet\RichText\RichText) {
+            $cellH = $cellH->getPlainText();
+        }
+
+        // Forcer en string pour les comparaisons
+        $cellE = (string) ($cellE ?? '');
+        $cellF = (string) ($cellF ?? '');
+        $cellG = (string) ($cellG ?? '');
+        $cellH = (string) ($cellH ?? '');
+
+        $hasDebit  = ($cellG !== '' && $cellG !== null);
+        $hasCredit = ($cellH !== '' && $cellH !== null);
+
+        // reste du code identique...
+        if ($cellF === '' && $cellE === '' && !$hasDebit && !$hasCredit) {
+            $sheet->getRowDimension($row)->setRowHeight(5);
+            continue;
+        }
+
+        if (!empty($cellE) && !empty($cellF) && !$hasDebit && !$hasCredit) {
+            if (strpos($cellF, 'TOTAL') !== 0 && strpos($cellF, 'SOLDE') !== 0) {
+                $sheet->mergeCells('A' . $row . ':H' . $row);
+                $sheet->getStyle('A' . $row . ':H' . $row)->applyFromArray([
+                    'font'      => ['bold' => true, 'color' => ['rgb' => '1E40AF']],
+                    'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E0F2FE']],
+                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT],
+                ]);
+                continue;
+            }
+        }
+
+        if (strpos($cellF, 'TOTAL') === 0) {
+            $sheet->getStyle('A' . $row . ':H' . $row)->applyFromArray([
+                'font' => ['bold' => true, 'color' => ['rgb' => '1F2937']],
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F3F4F6']],
+            ]);
+            $sheet->getStyle('F' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            if ($hasDebit)  $sheet->getStyle('G' . $row)->getFont()->getColor()->setARGB('991B1B');
+            if ($hasCredit) $sheet->getStyle('H' . $row)->getFont()->getColor()->setARGB('166534');
+            continue;
+        }
+
+        if (strpos($cellF, 'SOLDE') === 0) {
+            $isDebiteur = $hasDebit;
+            $sheet->getStyle('A' . $row . ':H' . $row)->applyFromArray([
+                'font' => ['bold' => true, 'color' => ['rgb' => $isDebiteur ? '991B1B' : '166534']],
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $isDebiteur ? 'FEF2F2' : 'F0FDF4']],
+            ]);
+            $sheet->getStyle('F' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            continue;
+        }
+
+        if ($hasDebit || $hasCredit) {
+            if ($hasDebit)  $sheet->getStyle('G' . $row)->getFont()->getColor()->setARGB('DC2626');
+            if ($hasCredit) $sheet->getStyle('H' . $row)->getFont()->getColor()->setARGB('16A34A');
+            if ($row % 2 == 0) {
+                $sheet->getStyle('A' . $row . ':H' . $row)
+                      ->getFill()->setFillType(Fill::FILL_SOLID)
+                      ->getStartColor()->setRGB('F9FAFB');
+            }
+        }
+
+        $sheet->getStyle('A' . $row . ':H' . $row)
+              ->getBorders()->getAllBorders()
+              ->setBorderStyle(Border::BORDER_THIN)
+              ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FFCCCCCC'));
     }
-    
-    protected function addGlobalTotals(Worksheet $sheet, $highestRow)
+}
+    /*protected function addGlobalTotals(Worksheet $sheet, $highestRow)
     {
         $totalRow = $highestRow + 2;
         $soldeRow = $totalRow + 1;
@@ -583,6 +889,61 @@ class GrandLivreGeneralExport implements FromQuery, WithHeadings, WithMapping, W
         $sheet->getStyle('A' . $soldeRow . ':H' . $soldeRow)->applyFromArray([
             'font' => ['bold' => true, 'size' => 11],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'BFDBFE']],
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+        ]);
+    }*/
+    protected function addGlobalTotals(Worksheet $sheet, $highestRow)
+    {
+        $totalRow  = $highestRow + 2;
+        $soldeRow  = $totalRow + 1;
+        $soldeGlobal = (float) ($this->recapStats['solde_global'] ?? 0);
+    
+        // — Ligne TOTAUX GÉNÉRAUX —
+        $sheet->setCellValue('A' . $totalRow, 'TOTAUX GÉNÉRAUX');
+        $sheet->mergeCells('A' . $totalRow . ':F' . $totalRow);
+        $sheet->getStyle('A' . $totalRow)
+              ->getAlignment()
+              ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+    
+        $sheet->setCellValue('G' . $totalRow, (float) $this->recapStats['total_debit']);
+        $sheet->setCellValue('H' . $totalRow, (float) $this->recapStats['total_credit']);
+    
+        $sheet->getStyle('G' . $totalRow . ':H' . $totalRow)
+              ->getNumberFormat()
+              ->setFormatCode('#,##0');
+    
+        $sheet->getStyle('A' . $totalRow . ':H' . $totalRow)->applyFromArray([
+            'font'    => ['bold' => true, 'color' => ['rgb' => '1E40AF']],
+            'fill'    => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'DBEAFE']],
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+        ]);
+    
+        // — Ligne SOLDE GLOBAL —
+        $sheet->setCellValue('A' . $soldeRow, 'SOLDE GLOBAL');
+        $sheet->mergeCells('A' . $soldeRow . ':F' . $soldeRow);
+        $sheet->getStyle('A' . $soldeRow)
+              ->getAlignment()
+              ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+    
+        if ($soldeGlobal > 0) {
+            $sheet->setCellValue('G' . $soldeRow, (float) abs($soldeGlobal));
+            $sheet->getStyle('G' . $soldeRow)
+                  ->getNumberFormat()
+                  ->setFormatCode('#,##0" (Débit)"');
+            $sheet->getStyle('G' . $soldeRow)->getFont()->getColor()->setARGB('991B1B');
+        } elseif ($soldeGlobal < 0) {
+            $sheet->setCellValue('H' . $soldeRow, (float) abs($soldeGlobal));
+            $sheet->getStyle('H' . $soldeRow)
+                  ->getNumberFormat()
+                  ->setFormatCode('#,##0" (Crédit)"');
+            $sheet->getStyle('H' . $soldeRow)->getFont()->getColor()->setARGB('166534');
+        } else {
+            $sheet->setCellValue('G' . $soldeRow, 0.0);
+        }
+    
+        $sheet->getStyle('A' . $soldeRow . ':H' . $soldeRow)->applyFromArray([
+            'font'    => ['bold' => true, 'size' => 11],
+            'fill'    => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'BFDBFE']],
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
         ]);
     }

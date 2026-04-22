@@ -180,9 +180,9 @@
 
                 {{-- MONTANT --}}
                 <div class="montant-row">
-                    Montant don/legs :
-                    {{ number_format($donateur->montant_don ?? 0, 0, ',', ' ') }}
-                    {{ $donateur->devise ?? 'XOF' }}
+                   <span class="label-text"> Montant don/legs :</span>
+                   <span class="label-value">{{ number_format($donateur->montant_don ?? 0, 0, ',', ' ') }}
+                    {{ $donateur->devise ?? 'XOF' }}</span>
                 </div>
 
                 {{-- ✅ MODE LIBERATION SUR UNE SEULE LIGNE --}}

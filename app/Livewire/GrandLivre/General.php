@@ -583,16 +583,51 @@ class General extends Component
                 $row++;
 
                 // Lignes d'écritures
+                // Remplacez le bloc "Lignes d'écritures" par ceci :
                 foreach ($account['ecritures'] as $e) {
-                    $sheet->setCellValue('A' . $row, $e['date']);
-                    $sheet->setCellValue('B' . $row, $e['piece']);
-                    $sheet->setCellValue('C' . $row, $e['journal']);
-                    $sheet->setCellValue('D' . $row, $e['old_account_code']);
+                    $libelle = (string) ($e['libelle'] ?? '');
+                    if (preg_match('/^[><=+@-]/', $libelle)) {
+                        \Log::warning('LIBELLÉ PROBLÉMATIQUE TROUVÉ', [
+                            'libelle'          => $libelle,
+                            'compte'           => $account['new_code'],
+                            'date'             => $e['date'],
+                            'piece'            => $e['piece'],
+                        ]);
+                    }
+                    // ✅ setCellValueExplicit pour toutes les cellules texte
+                    $sheet->setCellValueExplicit(
+                        'A' . $row, 
+                        $e['date'],
+                        \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+                    );
+                    $sheet->setCellValueExplicit(
+                        'B' . $row, 
+                        (string) ($e['piece'] ?? ''),
+                        \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+                    );
+                    $sheet->setCellValueExplicit(
+                        'C' . $row, 
+                        (string) ($e['journal'] ?? ''),
+                        \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+                    );
+                    $sheet->setCellValueExplicit(
+                        'D' . $row, 
+                        (string) ($e['old_account_code'] ?? ''),
+                        \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+                    );
                     $sheet->getStyle('D' . $row)->getAlignment()
                         ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
-                    $sheet->setCellValue('E' . $row, $e['libelle']);
+                    
+                    // ✅ COLONNE E = libellé — c'est ici que le '>' se trouve !
+                    $sheet->setCellValueExplicit(
+                        'E' . $row, 
+                        (string) ($e['libelle'] ?? ''),
+                        \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING
+                    );
                     $sheet->getStyle('E' . $row)->getAlignment()
                         ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                    
+                    // ✅ Colonnes numériques — garder setCellValue normale
                     if ($e['debit'] > 0) {
                         $sheet->setCellValue('F' . $row, $e['debit']);
                         $sheet->getStyle('F' . $row)->getAlignment()
@@ -603,7 +638,10 @@ class General extends Component
                         $sheet->getStyle('G' . $row)->getAlignment()
                             ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
                     }
-                    $sheet->getStyle("F{$row}:G{$row}")->getNumberFormat()->setFormatCode('#,##0');
+                    
+                    $sheet->getStyle("F{$row}:G{$row}")
+                          ->getNumberFormat()
+                          ->setFormatCode('#,##0');
                     $row++;
                 }
 

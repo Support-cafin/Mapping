@@ -139,7 +139,7 @@
                 <a href="{{ route('admin.entreprises.index') }}"
                    class="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-600 hover:bg-purple-50 transition">
                     <ion-icon name="business-outline" class="text-xl text-purple-500"></ion-icon>
-                    <span class="text-sm font-medium">Mes Entreprises</span>
+                    <span class="text-sm font-medium">Mes ONG</span>
                 </a>
 
                 <a href="{{ route('admin.users.index') }}"
@@ -157,7 +157,7 @@
                 <a href="{{ route('admin.entreprises.index') }}"
                    class="flex items-center gap-3 px-4 py-3 rounded-xl text-gray-600 hover:bg-purple-50 transition">
                     <ion-icon name="business-outline" class="text-xl text-purple-500"></ion-icon>
-                    <span class="text-sm font-medium">Mon Entreprise</span>
+                    <span class="text-sm font-medium">Mon ONG</span>
                 </a>
 
                 <a href="{{ route('admin.users.index') }}"

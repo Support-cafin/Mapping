@@ -283,7 +283,7 @@
                 @endif
     
                 <!-- Compte -->
-                @if($accountType !== 'all')
+                {{-- @if($accountType !== 'all')
                 <div class="min-w-[150px]">
                     <label style="font-size: 12px !important;" class="text-[9px] font-medium mb-0.5 block">Compte</label>
                     <select style="font-size: 12px !important;" 
@@ -297,7 +297,7 @@
                         @endforeach
                     </select>
                 </div>
-                @endif
+                @endif --}}
     
                 <!-- Recherche -->
                 <div class="min-w-[180px]">

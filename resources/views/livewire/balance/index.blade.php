@@ -21,7 +21,7 @@
 
     @if($viewMode === 'details' && $selectedBalance)
         <!-- Vue des détails -->
-        <div id="balance-details" class="bg-white rounded-lg shadow border overflow-hidden">
+        <div id="balance-details" class="bg-white rounded-lg shadow border overflow-hidden" style="margin-top: 50px;">
             <!-- En-tête -->
             <div class="px-6 py-4 border-b bg-gray-50">
                 <div class="flex justify-between items-center">
@@ -57,78 +57,126 @@
                     Détail par compte entité
                 </h3>
                 
-                <div class="overflow-x-auto">
-                    <table class="min-w-full border-collapse">
-                        <thead class="bg-gray-800 text-white">
-                            <tr>
-                                <th class="px-4 py-2 text-left text-xs">Compte Entité</th>
-                                <th class="px-4 py-2 text-right text-xs">Débit</th>
-                                <th class="px-4 py-2 text-right text-xs">Crédit</th>
-                                <th class="px-4 py-2 text-right text-xs">Solde</th>
-                            </tr>
-                        </thead>
+                <!-- Dans la vue détail, afficher les écritures comme dans l'image -->
+                <!-- Dans la vue détail, afficher les écritures comme dans l'image -->
+            <div class="overflow-x-auto">
+                <table class="min-w-full border-collapse">
+                    <thead class="bg-gray-800 text-white">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs">Date</th>
+                            <th class="px-4 py-2 text-left text-xs">Journal</th>
+                            <th class="px-4 py-2 text-left text-xs">Compte</th>
+                            <th class="px-4 py-2 text-left text-xs">Libellé</th>
+                            <th class="px-4 py-2 text-right text-xs">Débit</th>
+                            <th class="px-4 py-2 text-right text-xs">Crédit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @php
+                            $totalDebit = 0;
+                            $totalCredit = 0;
+                            $nombreEcritures = 0;
+                        @endphp
                         
-                        <tbody>
+                        @foreach($selectedBalance['ecritures'] as $ecriture)
                             @php
-                                $totalDebit = 0;
-                                $totalCredit = 0;
+                                $totalDebit += $ecriture->debit;
+                                $totalCredit += $ecriture->credit;
+                                $nombreEcritures++;
                             @endphp
-                            
-                            @forelse($selectedBalance['old_accounts_data'] as $oldData)
-                                @php
-                                    $totalDebit += $oldData['debit'];
-                                    $totalCredit += $oldData['credit'];
-                                    $soldeOld = $oldData['debit'] - $oldData['credit'];
-                                @endphp
-                                <tr class="hover:bg-gray-50 border-b border-gray-100">
-                                    <td class="px-4 py-2 text-xs font-mono">
-                                        <span class="font-medium">{{ $oldData['code'] }}</span>
-                                        <span class="text-gray-500 text-[10px] block">{{ Str::limit($oldData['intitule'], 40) }}</span>
-                                    </td>
-                                    <td class="px-4 py-2 text-right text-xs {{ $oldData['debit'] > 0 ? 'font-medium text-red-600' : 'text-gray-400' }}">
-                                        {{ $oldData['debit'] > 0 ? number_format($oldData['debit'], 0, ',', ' ') : '-' }}
-                                    </td>
-                                    <td class="px-4 py-2 text-right text-xs {{ $oldData['credit'] > 0 ? 'font-medium text-green-600' : 'text-gray-400' }}">
-                                        {{ $oldData['credit'] > 0 ? number_format($oldData['credit'], 0, ',', ' ') : '-' }}
-                                    </td>
-                                    <td class="px-4 py-2 text-right text-xs font-medium {{ $soldeOld > 0 ? 'text-red-600' : ($soldeOld < 0 ? 'text-green-600' : 'text-gray-500') }}">
-                                        {{ $soldeOld != 0 ? number_format(abs($soldeOld), 0, ',', ' ') : '-' }}
-                                        @if($soldeOld != 0)
-                                            <span class="text-[8px] ml-1">{{ $soldeOld > 0 ? 'D' : 'C' }}</span>
-                                        @endif
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="4" class="px-4 py-4 text-center text-gray-500">
-                                        Aucun détail disponible
-                                    </td>
-                                </tr>
-                            @endforelse
-                            
-                            <!-- Ligne de total -->
-                            <tr class="bg-gray-100 font-bold border-t-2 border-gray-300">
-                                <td class="px-4 py-3 text-right text-sm">TOTAL</td>
-                                <td class="px-4 py-3 text-right text-sm text-red-600">
-                                    {{ number_format($totalDebit, 0, ',', ' ') }}
+                            <tr class="hover:bg-gray-50 border-b border-gray-100">
+                                <td class="px-4 py-2 text-xs">
+                                    {{ \Carbon\Carbon::parse($ecriture->date_ecriture)->format('d/m/Y') }}
                                 </td>
-                                <td class="px-4 py-3 text-right text-sm text-green-600">
-                                    {{ number_format($totalCredit, 0, ',', ' ') }}
+                                <td class="px-4 py-2 text-xs">
+                                    {{ $ecriture->journal_code ?? '-' }}
                                 </td>
-                                <td class="px-4 py-3 text-right text-sm {{ $selectedBalance['solde'] > 0 ? 'text-red-600' : 'text-green-600' }}">
-                                    {{ number_format(abs($selectedBalance['solde']), 0, ',', ' ') }}
-                                    ({{ $selectedBalance['solde'] > 0 ? 'D' : 'C' }})
+                                <td class="px-4 py-2 text-xs font-mono">
+                                    {{ $ecriture->oldAccount->code ?? '-' }}
+                                </td>
+                                <td class="px-4 py-2 text-xs">
+                                    {{ $ecriture->libelle ?? '-' }}
+                                </td>
+                                <td class="px-4 py-2 text-right text-xs text-red-600">
+                                    {{ $ecriture->debit > 0 ? number_format($ecriture->debit, 0, ',', ' ') : '-' }}
+                                </td>
+                                <td class="px-4 py-2 text-right text-xs text-green-600">
+                                    {{ $ecriture->credit > 0 ? number_format($ecriture->credit, 0, ',', ' ') : '-' }}
                                 </td>
                             </tr>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <!-- Légende -->
-                <div class="mt-4 flex justify-end gap-4 text-[10px] text-gray-500">
-                    <span><span class="text-red-600 font-bold">D</span> = Débiteur</span>
-                    <span><span class="text-green-600 font-bold">C</span> = Créditeur</span>
-                </div>
+                        @endforeach
+                    </tbody>
+                    
+                    <!-- Pied de tableau style "comme dans l'image" -->
+                    <tfoot>
+                        <!-- Ligne TOTAL avec le nombre d'écritures -->
+                        <tr class="bg-gray-100 border-t-2 border-gray-300 font-bold">
+                            <td colspan="4" class="px-4 py-2 text-xs text-gray-600">
+                                TOTAL ({{ $nombreEcritures }} écrit.)
+                            </td>
+                            <td class="px-4 py-2 text-right text-xs font-bold text-red-600">
+                                {{ number_format($totalDebit, 0, ',', ' ') }}
+                            </td>
+                            <td class="px-4 py-2 text-right text-xs font-bold text-green-600">
+                                {{ number_format($totalCredit, 0, ',', ' ') }}
+                            </td>
+                        </tr>
+                        
+                        @php
+                            $solde = $totalDebit - $totalCredit;
+                        @endphp
+                        
+                        <!-- Ligne SOLDE -->
+                        @if($solde != 0)
+                            <tr class="bg-blue-50 border-t border-blue-200 font-bold">
+                                <td colspan="4" class="px-4 py-2 text-xs text-gray-700">
+                                    @if($solde > 0)
+                                        SOLDE DÉBITEUR
+                                    @else
+                                        SOLDE CRÉDITEUR
+                                    @endif
+                                </td>
+                                
+                                @if($solde > 0)
+                                    <!-- Solde débiteur dans la colonne DÉBIT -->
+                                    <td class="px-4 py-2 text-right text-xs font-bold text-red-600">
+                                        {{ number_format(abs($solde), 0, ',', ' ') }}
+                                    </td>
+                                    <td class="px-4 py-2 text-right text-xs text-gray-400">
+                                        -
+                                    </td>
+                                @else
+                                    <!-- Solde créditeur dans la colonne CRÉDIT -->
+                                    <td class="px-4 py-2 text-right text-xs text-gray-400">
+                                        -
+                                    </td>
+                                    <td class="px-4 py-2 text-right text-xs font-bold text-green-600">
+                                        {{ number_format(abs($solde), 0, ',', ' ') }}
+                                    </td>
+                                @endif
+                            </tr>
+                        @endif
+                        
+                        <!-- Optionnel : ligne d'équilibre -->
+                        <tr class="text-[10px]">
+                            <td colspan="6" class="px-4 py-1 text-right text-gray-400">
+                                @if($totalDebit == $totalCredit)
+                                    <span class="text-green-600">✓ Équilibre</span>
+                                @else
+                                    <span class="text-orange-500">⚠ Différence : {{ number_format(abs($solde), 0, ',', ' ') }}</span>
+                                @endif
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            
+            <!-- Légende -->
+            <div class="mt-4 flex justify-end gap-4 text-[10px] text-gray-500">
+                <span><span class="text-red-600 font-bold">D</span> = Débiteur</span>
+                <span><span class="text-green-600 font-bold">C</span> = Créditeur</span>
+                <span><span class="text-gray-600">{{ $nombreEcritures ?? 0 }}</span> écriture(s)</span>
+            </div>
             </div>
             
             <!-- Section des sous-comptes si existants -->
@@ -421,14 +469,14 @@
                         
                         @if($oldAccountsCount > 0 && !$hasChildren)
                             <div style="font-size: 10px;" class="text-gray-500 mt-1 print:hidden">
-                                {{ $oldAccountsCount }} compte entité
+                                -
                             </div>
                         @endif
                         
                         @if($hasChildren && $oldAccountsCount > 0)
                             <div style="font-size: 10px;" class="text-gray-500 mt-1 print:hidden">
-                                <i class="fas fa-history mr-1"></i>
-                                {{ $oldAccountsCount }} compte entité agrégé
+                                
+                                -
                             </div>
                         @endif
                     </td>
@@ -616,12 +664,12 @@
                             </div>
                         @endif
                         
-                        @if($oldAccountsCount > 0)
+                        {{-- @if($oldAccountsCount > 0)
                             <div style="font-size: 10px;" class="text-gray-500 mt-1 print:hidden">
                                 <i class="fas fa-history mr-1"></i>
-                                {{ $oldAccountsCount }} compte entité
+                                {{ $oldAccountsCount }} compte entité 
                             </div>
-                        @endif
+                        @endif --}}
                     </td>
                     
                     <!-- Solde d'ouverture Débit -->
@@ -1005,6 +1053,48 @@
     .print-header, .print-footer {
         display: none;
     }
+    
+    /* Dans ton fichier CSS principal */
+.balance-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Inter', sans-serif;
+}
+
+.balance-table th {
+    background-color: #1f2937;
+    color: white;
+    font-weight: 600;
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 13px;
+}
+
+.balance-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.balance-table tr:hover {
+    background-color: #f9fafb;
+}
+
+.balance-table .child-row td:first-child {
+    padding-left: 32px;
+}
+
+.balance-table .subtotal-row {
+    background-color: #f3f4f6;
+    font-weight: 600;
+    border-top: 1px solid #d1d5db;
+    border-bottom: 1px solid #d1d5db;
+}
+
+.balance-table .total-row {
+    background-color: #1f2937;
+    color: white;
+    font-weight: bold;
+}
 </style>
 @push('scripts')
 <!-- Script pour l'impression -->

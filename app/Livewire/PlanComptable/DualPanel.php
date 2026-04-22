@@ -332,7 +332,7 @@ class DualPanel extends Component
         );
         
         session()->flash('success', "Mapping créé. $updatedCount écriture(s) mise(s) à jour dans le Grand Livre.");
-    }
+    } 
     
     public function updateMapping()
     {
