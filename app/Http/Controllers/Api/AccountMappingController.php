@@ -94,29 +94,33 @@ class AccountMappingController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $exo = $this->exerciceActif();
+            $exo     = $this->exerciceActif();
+            $perPage = min((int) $request->get('per_page', 50), 200);
 
-            $mappings = AccountMapping::with(['oldAccount', 'newAccount'])
+            $result = AccountMapping::with(['oldAccount:id,code,intitule', 'newAccount:id,code,intitule'])
                 ->where('entreprise_id', $this->entrepriseId())
                 ->where('exercice_id', $exo->id ?? '')
                 ->when($request->filled('search_old'), function ($q) use ($request) {
-                    $q->whereHas('oldAccount', function ($q2) use ($request) {
+                    $q->whereHas('oldAccount', fn($q2) =>
                         $q2->where('code', 'like', "%{$request->search_old}%")
-                            ->orWhere('intitule', 'like', "%{$request->search_old}%");
-                    });
+                           ->orWhere('intitule', 'like', "%{$request->search_old}%")
+                    );
                 })
                 ->when($request->filled('search_new'), function ($q) use ($request) {
-                    $q->whereHas('newAccount', function ($q2) use ($request) {
+                    $q->whereHas('newAccount', fn($q2) =>
                         $q2->where('code', 'like', "%{$request->search_new}%")
-                            ->orWhere('intitule', 'like', "%{$request->search_new}%");
-                    });
+                           ->orWhere('intitule', 'like', "%{$request->search_new}%")
+                    );
                 })
                 ->orderBy('old_account_id')
-                ->get();
+                ->paginate($perPage);
 
             return $this->success('Liste des mappings.', [
-                'mappings' => $mappings,
-                'total'    => $mappings->count(),
+                'mappings'     => $result->items(),
+                'total'        => $result->total(),
+                'per_page'     => $result->perPage(),
+                'current_page' => $result->currentPage(),
+                'last_page'    => $result->lastPage(),
             ]);
         } catch (\Throwable $e) {
             return $this->serverError($e->getMessage());

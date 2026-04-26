@@ -41,8 +41,15 @@ class BalanceApiController extends Controller
             ->valides()
             ->whereNotNull('new_account_id');
 
-        if ($request->filled('date_debut') && $request->filled('date_fin')) {
-            $query->whereBetween('date_ecriture', [$request->date_debut, $request->date_fin]);
+        $debut = $request->filled('dateDebut') ? $request->dateDebut
+               : ($request->filled('date_debut') ? $request->date_debut
+               : $exo?->date_debut);
+        $fin   = $request->filled('dateFin') ? $request->dateFin
+               : ($request->filled('date_fin') ? $request->date_fin
+               : $exo?->date_fin);
+
+        if ($debut && $fin) {
+            $query->whereBetween('date_ecriture', [$debut, $fin]);
         }
 
         if ($request->filled('exercice')) {
@@ -65,14 +72,17 @@ class BalanceApiController extends Controller
     /**
      * GET /api/balance/4colonnes
      * Retourne la balance à 4 colonnes : mouvement débit/crédit + solde débiteur/créditeur
+     * Optimisé : 3 requêtes au lieu de N+1
      */
     public function balance4Colonnes(Request $request): JsonResponse
     {
         try {
             $exo          = $this->exerciceActif();
             $entrepriseId = $this->entrepriseId();
+            $perPage      = min((int) $request->get('per_page', 50), 500);
+            $page         = max(1, (int) $request->get('page', 1));
 
-            // Récupérer tous les comptes SYCEBNL racines (sans parent)
+            // 1. Arbre des comptes (1 requête)
             $comptes = NewAccount::where('entreprise_id', $entrepriseId)
                 ->where('exercice_id', $exo->id ?? '')
                 ->whereNull('parent_id')
@@ -80,66 +90,95 @@ class BalanceApiController extends Controller
                 ->orderBy('code')
                 ->get();
 
-            $balances = [];
-            $totalDebit   = 0;
-            $totalCredit  = 0;
-            $totalSoldeD  = 0;
-            $totalSoldeC  = 0;
+            // 2. Agrégats en masse groupés par (new_account_id, old_account_id) — 1 requête
+            $agg = $this->baseGrandLivreQuery($entrepriseId, $exo, $request)
+                ->select(
+                    'new_account_id',
+                    'old_account_id',
+                    DB::raw('SUM(debit) as total_debit'),
+                    DB::raw('SUM(credit) as total_credit'),
+                    DB::raw('COUNT(*) as cnt')
+                )
+                ->groupBy('new_account_id', 'old_account_id')
+                ->get();
+
+            $aggByAccount = $agg->groupBy('new_account_id');
+
+            // 3. Charger les anciens comptes (1 requête)
+            $oldAccounts = \App\Models\OldAccount::where('entreprise_id', $entrepriseId)
+                ->where('exercice_id', $exo->id ?? '')
+                ->get(['id', 'code', 'intitule'])
+                ->keyBy('id');
+
+            // 4. Construction des lignes en PHP (0 requête supplémentaire)
+            $balances    = [];
+            $totalDebit  = 0;
+            $totalCredit = 0;
+            $totalSoldeD = 0;
+            $totalSoldeC = 0;
 
             foreach ($comptes as $compte) {
-                // Récupérer tous les IDs du compte + ses enfants
                 $allIds = $this->getAllDescendantIds($compte);
 
-                // Écritures Grand Livre pour ces comptes
-                $ecritures = $this->baseGrandLivreQuery($entrepriseId, $exo, $request)
-                    ->whereIn('new_account_id', $allIds)
-                    ->get(['debit', 'credit', 'old_account_id', 'new_account_id']);
+                $debit = $credit = $count = 0;
+                $oldAccountsGrouped = [];
 
-                if ($ecritures->isEmpty()) continue;
+                foreach ($allIds as $aid) {
+                    $rows = $aggByAccount->get($aid);
+                    if (!$rows) continue;
+                    foreach ($rows as $row) {
+                        $debit  += $row->total_debit;
+                        $credit += $row->total_credit;
+                        $count  += $row->cnt;
+                        $oaId = $row->old_account_id;
+                        if (!isset($oldAccountsGrouped[$oaId])) {
+                            $oldAccountsGrouped[$oaId] = ['debit' => 0, 'credit' => 0];
+                        }
+                        $oldAccountsGrouped[$oaId]['debit']  += $row->total_debit;
+                        $oldAccountsGrouped[$oaId]['credit'] += $row->total_credit;
+                    }
+                }
 
-                $debit  = round($ecritures->sum('debit'), 2);
-                $credit = round($ecritures->sum('credit'), 2);
+                if ($count === 0) continue;
+
+                $debit  = round($debit, 2);
+                $credit = round($credit, 2);
                 $solde  = round($debit - $credit, 2);
 
-                // Détail par ancien compte
-                $oldAccountsData = $ecritures
-                    ->groupBy('old_account_id')
-                    ->map(function ($group) {
-                        $oa = $group->first()->oldAccount;
-                        return [
-                            'id'       => $group->first()->old_account_id,
-                            'code'     => $oa?->code ?? 'N/A',
-                            'intitule' => $oa?->intitule ?? 'Inconnu',
-                            'debit'    => round($group->sum('debit'), 2),
-                            'credit'   => round($group->sum('credit'), 2),
-                        ];
-                    })->values()->toArray();
+                $oldAccountsData = [];
+                foreach ($oldAccountsGrouped as $oaId => $vals) {
+                    $oa = $oldAccounts->get($oaId);
+                    $oldAccountsData[] = [
+                        'id'       => $oaId,
+                        'code'     => $oa?->code ?? 'N/A',
+                        'intitule' => $oa?->intitule ?? 'Inconnu',
+                        'debit'    => round($vals['debit'], 2),
+                        'credit'   => round($vals['credit'], 2),
+                    ];
+                }
 
-                // Sous-comptes (enfants directs)
                 $childrenData = [];
                 foreach ($compte->children ?? [] as $child) {
                     $childIds = $this->getAllDescendantIds($child);
-                    $childEcritures = $this->baseGrandLivreQuery($entrepriseId, $exo, $request)
-                        ->whereIn('new_account_id', $childIds)
-                        ->get(['debit', 'credit']);
-
-                    if ($childEcritures->isEmpty()) continue;
-
-                    $cd = round($childEcritures->sum('debit'), 2);
-                    $cc = round($childEcritures->sum('credit'), 2);
+                    $cd = $cc = 0;
+                    foreach ($childIds as $cid) {
+                        $rows = $aggByAccount->get($cid);
+                        if (!$rows) continue;
+                        foreach ($rows as $r) { $cd += $r->total_debit; $cc += $r->total_credit; }
+                    }
+                    if ($cd == 0 && $cc == 0) continue;
                     $cs = round($cd - $cc, 2);
-
                     $childrenData[] = [
                         'id'       => $child->id,
                         'code'     => $child->code,
                         'intitule' => $child->intitule,
-                        'debit'    => $cd,
-                        'credit'   => $cc,
+                        'debit'    => round($cd, 2),
+                        'credit'   => round($cc, 2),
                         'solde'    => $cs,
                     ];
                 }
 
-                $row = [
+                $balances[]   = [
                     'id'               => $compte->id,
                     'code'             => $compte->code,
                     'intitule'         => $compte->intitule,
@@ -148,36 +187,40 @@ class BalanceApiController extends Controller
                     'solde'            => $solde,
                     'solde_debiteur'   => $solde > 0 ? $solde : 0,
                     'solde_crediteur'  => $solde < 0 ? abs($solde) : 0,
-                    'ecritures_count'  => $ecritures->count(),
+                    'ecritures_count'  => $count,
                     'has_children'     => count($childrenData) > 0,
                     'children_count'   => count($childrenData),
                     'old_accounts_data'=> $oldAccountsData,
                     'children_data'    => $childrenData,
                 ];
 
-                $balances[]   = $row;
                 $totalDebit  += $debit;
                 $totalCredit += $credit;
-
-                if ($solde > 0) {
-                    $totalSoldeD += $solde;
-                } else {
-                    $totalSoldeC += abs($solde);
-                }
+                if ($solde > 0) { $totalSoldeD += $solde; } else { $totalSoldeC += abs($solde); }
             }
 
+            // 5. Pagination
+            $total         = count($balances);
+            $lastPage      = max(1, (int) ceil($total / $perPage));
+            $page          = min($page, $lastPage);
+            $pagedBalances = array_values(array_slice($balances, ($page - 1) * $perPage, $perPage));
+
             return $this->success('Balance à 4 colonnes.', [
-                'balances' => $balances,
+                'balances'     => $pagedBalances,
+                'total'        => $total,
+                'per_page'     => $perPage,
+                'current_page' => $page,
+                'last_page'    => $lastPage,
                 'totaux' => [
-                    'total_debit'      => round($totalDebit, 2),
-                    'total_credit'     => round($totalCredit, 2),
+                    'total_debit'           => round($totalDebit, 2),
+                    'total_credit'          => round($totalCredit, 2),
                     'total_solde_debiteur'  => round($totalSoldeD, 2),
                     'total_solde_crediteur' => round($totalSoldeC, 2),
-                    'equilibre'        => abs($totalSoldeD - $totalSoldeC) < 0.01,
+                    'equilibre'             => abs($totalSoldeD - $totalSoldeC) < 0.01,
                 ],
                 'stats' => [
                     'total_ecritures' => array_sum(array_column($balances, 'ecritures_count')),
-                    'total_comptes'   => count($balances),
+                    'total_comptes'   => $total,
                 ],
             ]);
         } catch (\Throwable $e) {
@@ -190,13 +233,17 @@ class BalanceApiController extends Controller
     /**
      * GET /api/balance/6colonnes
      * Retourne la balance à 6 colonnes : ouverture (RAN) + mouvement + solde clôture
+     * Optimisé : 3 requêtes au lieu de N+1
      */
     public function balance6Colonnes(Request $request): JsonResponse
     {
         try {
             $exo          = $this->exerciceActif();
             $entrepriseId = $this->entrepriseId();
+            $perPage      = min((int) $request->get('per_page', 50), 500);
+            $page         = max(1, (int) $request->get('page', 1));
 
+            // 1. Arbre des comptes (1 requête)
             $comptes = NewAccount::where('entreprise_id', $entrepriseId)
                 ->where('exercice_id', $exo->id ?? '')
                 ->whereNull('parent_id')
@@ -204,6 +251,25 @@ class BalanceApiController extends Controller
                 ->orderBy('code')
                 ->get();
 
+            // 2. Agrégats RAN en masse — 1 requête (sans filtre de date)
+            $ranAgg = GrandLivre::where('entreprise_id', $entrepriseId)
+                ->where('exercice_id', $exo->id ?? '')
+                ->whereNotNull('new_account_id')
+                ->where('journal_code', 'RAN')
+                ->select('new_account_id', DB::raw('SUM(debit) as d, SUM(credit) as c, COUNT(*) as cnt'))
+                ->groupBy('new_account_id')
+                ->get()
+                ->keyBy('new_account_id');
+
+            // 3. Agrégats mouvements en masse (hors RAN, avec filtre date) — 1 requête
+            $mvtAgg = $this->baseGrandLivreQuery($entrepriseId, $exo, $request)
+                ->where('journal_code', '!=', 'RAN')
+                ->select('new_account_id', DB::raw('SUM(debit) as d, SUM(credit) as c, COUNT(*) as cnt'))
+                ->groupBy('new_account_id')
+                ->get()
+                ->keyBy('new_account_id');
+
+            // 4. Construction des lignes en PHP (0 requête supplémentaire)
             $balances = [];
             $totaux = [
                 'ouverture_debit'  => 0, 'ouverture_credit' => 0,
@@ -214,60 +280,38 @@ class BalanceApiController extends Controller
             foreach ($comptes as $compte) {
                 $allIds = $this->getAllDescendantIds($compte);
 
-                // Soldes d'ouverture (journal RAN)
-                $ran = GrandLivre::where('entreprise_id', $entrepriseId)
-                    ->where('exercice_id', $exo->id ?? '')
-                    ->whereIn('new_account_id', $allIds)
-                    ->where('journal_code', 'RAN')
-                    ->get(['debit', 'credit']);
+                $od = $oc = $md = $mc = $cnt = 0;
+                foreach ($allIds as $aid) {
+                    $r = $ranAgg->get($aid);
+                    $m = $mvtAgg->get($aid);
+                    $od  += $r?->d   ?? 0;
+                    $oc  += $r?->c   ?? 0;
+                    $md  += $m?->d   ?? 0;
+                    $mc  += $m?->c   ?? 0;
+                    $cnt += ($r?->cnt ?? 0) + ($m?->cnt ?? 0);
+                }
 
-                $ouvertureDebit  = round($ran->sum('debit'), 2);
-                $ouvertureCredit = round($ran->sum('credit'), 2);
+                $od = round($od, 2); $oc = round($oc, 2);
+                $md = round($md, 2); $mc = round($mc, 2);
 
-                // Mouvements (hors RAN)
-                $mouvements = $this->baseGrandLivreQuery($entrepriseId, $exo, $request)
-                    ->whereIn('new_account_id', $allIds)
-                    ->where('journal_code', '!=', 'RAN')
-                    ->get(['debit', 'credit']);
+                if (abs($od) < 0.001 && abs($oc) < 0.001 && abs($md) < 0.001 && abs($mc) < 0.001) continue;
 
-                $mouvementDebit  = round($mouvements->sum('debit'), 2);
-                $mouvementCredit = round($mouvements->sum('credit'), 2);
+                $soldeCloture = round(($od + $md) - ($oc + $mc), 2);
 
-                // Solde de clôture
-                $totalDebit  = round($ouvertureDebit + $mouvementDebit, 2);
-                $totalCredit = round($ouvertureCredit + $mouvementCredit, 2);
-                $soldeCloture = round($totalDebit - $totalCredit, 2);
-
-                $hasOuverture  = abs($ouvertureDebit) > 0.001 || abs($ouvertureCredit) > 0.001;
-                $hasMouvements = abs($mouvementDebit) > 0.001 || abs($mouvementCredit) > 0.001;
-                $hasCloture    = abs($soldeCloture) > 0.001;
-
-                if (!$hasOuverture && !$hasMouvements && !$hasCloture) continue;
-
-                // Sous-comptes
                 $childrenData = [];
                 foreach ($compte->children ?? [] as $child) {
                     $childIds = $this->getAllDescendantIds($child);
-
-                    $childRan = GrandLivre::where('entreprise_id', $entrepriseId)
-                        ->where('exercice_id', $exo->id ?? '')
-                        ->whereIn('new_account_id', $childIds)
-                        ->where('journal_code', 'RAN')
-                        ->get(['debit', 'credit']);
-
-                    $childMvt = $this->baseGrandLivreQuery($entrepriseId, $exo, $request)
-                        ->whereIn('new_account_id', $childIds)
-                        ->where('journal_code', '!=', 'RAN')
-                        ->get(['debit', 'credit']);
-
-                    $cod = round($childRan->sum('debit'), 2);
-                    $coc = round($childRan->sum('credit'), 2);
-                    $cmd = round($childMvt->sum('debit'), 2);
-                    $cmc = round($childMvt->sum('credit'), 2);
-                    $csc = round(($cod + $cmd) - ($coc + $cmc), 2);
-
+                    $cod = $coc = $cmd = $cmc = 0;
+                    foreach ($childIds as $cid) {
+                        $r = $ranAgg->get($cid);
+                        $m = $mvtAgg->get($cid);
+                        $cod += $r?->d ?? 0; $coc += $r?->c ?? 0;
+                        $cmd += $m?->d ?? 0; $cmc += $m?->c ?? 0;
+                    }
                     if (abs($cod) < 0.001 && abs($coc) < 0.001 && abs($cmd) < 0.001 && abs($cmc) < 0.001) continue;
-
+                    $cod = round($cod, 2); $coc = round($coc, 2);
+                    $cmd = round($cmd, 2); $cmc = round($cmc, 2);
+                    $csc = round(($cod + $cmd) - ($coc + $cmc), 2);
                     $childrenData[] = [
                         'id'               => $child->id,
                         'code'             => $child->code,
@@ -286,37 +330,42 @@ class BalanceApiController extends Controller
                     'id'               => $compte->id,
                     'code'             => $compte->code,
                     'intitule'         => $compte->intitule,
-                    'ouverture_debit'  => $ouvertureDebit,
-                    'ouverture_credit' => $ouvertureCredit,
-                    'mouvement_debit'  => $mouvementDebit,
-                    'mouvement_credit' => $mouvementCredit,
+                    'ouverture_debit'  => $od,
+                    'ouverture_credit' => $oc,
+                    'mouvement_debit'  => $md,
+                    'mouvement_credit' => $mc,
                     'cloture_debit'    => $soldeCloture > 0 ? $soldeCloture : 0,
                     'cloture_credit'   => $soldeCloture < 0 ? abs($soldeCloture) : 0,
                     'solde_cloture'    => $soldeCloture,
                     'has_children'     => count($childrenData) > 0,
                     'children_count'   => count($childrenData),
                     'children_data'    => $childrenData,
-                    'ecritures_count'  => $mouvements->count() + $ran->count(),
+                    'ecritures_count'  => $cnt,
                 ];
 
-                $totaux['ouverture_debit']  += $ouvertureDebit;
-                $totaux['ouverture_credit'] += $ouvertureCredit;
-                $totaux['mouvement_debit']  += $mouvementDebit;
-                $totaux['mouvement_credit'] += $mouvementCredit;
-
-                if ($soldeCloture > 0) {
-                    $totaux['cloture_debit']  += $soldeCloture;
-                } else {
-                    $totaux['cloture_credit'] += abs($soldeCloture);
-                }
+                $totaux['ouverture_debit']  += $od;
+                $totaux['ouverture_credit'] += $oc;
+                $totaux['mouvement_debit']  += $md;
+                $totaux['mouvement_credit'] += $mc;
+                if ($soldeCloture > 0) { $totaux['cloture_debit']  += $soldeCloture; }
+                else                  { $totaux['cloture_credit'] += abs($soldeCloture); }
             }
 
-            // Équilibre
+            // 5. Pagination
+            $total         = count($balances);
+            $lastPage      = max(1, (int) ceil($total / $perPage));
+            $page          = min($page, $lastPage);
+            $pagedBalances = array_values(array_slice($balances, ($page - 1) * $perPage, $perPage));
+
             $totalDebitGeneral  = round($totaux['ouverture_debit'] + $totaux['mouvement_debit'], 2);
             $totalCreditGeneral = round($totaux['ouverture_credit'] + $totaux['mouvement_credit'], 2);
 
             return $this->success('Balance à 6 colonnes.', [
-                'balances' => $balances,
+                'balances'     => $pagedBalances,
+                'total'        => $total,
+                'per_page'     => $perPage,
+                'current_page' => $page,
+                'last_page'    => $lastPage,
                 'totaux'   => array_map(fn($v) => round($v, 2), $totaux),
                 'equilibre' => [
                     'total_debit_general'  => $totalDebitGeneral,
@@ -324,7 +373,7 @@ class BalanceApiController extends Controller
                     'est_equilibre'        => abs($totalDebitGeneral - $totalCreditGeneral) < 0.01,
                 ],
                 'stats' => [
-                    'total_comptes'   => count($balances),
+                    'total_comptes'   => $total,
                     'total_ecritures' => array_sum(array_column($balances, 'ecritures_count')),
                 ],
             ]);

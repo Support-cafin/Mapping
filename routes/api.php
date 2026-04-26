@@ -15,6 +15,9 @@ use App\Http\Controllers\Api\ProfileApiController;
 use App\Http\Controllers\Api\ExerciceController;
 use App\Http\Controllers\Api\AccountMappingController;
 use App\Http\Controllers\Api\GrandLivreController;
+use App\Http\Controllers\Api\AccountController;
+use App\Http\Controllers\Api\ManageBalanceController;
+use App\Http\Controllers\Api\FinancialController;
 use App\Services\LoginSecurityService;
 
 /*
@@ -137,6 +140,37 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('export/typed',  [BalanceController::class, 'exportTyped']);
         Route::get('export/excel',  [BalanceController::class, 'exportExcel']);
         Route::get('export',        [BalanceController::class, 'export']);
+    });
+
+    // ── Comptes anciens / nouveaux (CRUD + import) ───────────────────────────
+    Route::prefix('plan-comptable')->group(function () {
+        Route::get('stats',                        [AccountController::class, 'stats']);
+        Route::get('{type}/accounts',              [AccountController::class, 'index']);
+        Route::post('{type}/accounts',             [AccountController::class, 'store']);
+        Route::get('{type}/accounts/template',     [AccountController::class, 'template']);
+        Route::post('{type}/accounts/import',      [AccountController::class, 'import']);
+        Route::delete('{type}/accounts',           [AccountController::class, 'destroyAll']);
+        Route::get('{type}/accounts/{id}',         [AccountController::class, 'show']);
+        Route::put('{type}/accounts/{id}',         [AccountController::class, 'update']);
+        Route::delete('{type}/accounts/{id}',      [AccountController::class, 'destroy']);
+    });
+
+    // ── Gestion des balances OldBalance / NewBalance ─────────────────────────
+    Route::prefix('manage-balances')->group(function () {
+        Route::get('{type}/template',  [ManageBalanceController::class, 'template']);
+        Route::post('{type}/import',   [ManageBalanceController::class, 'import']);
+        Route::delete('{type}',        [ManageBalanceController::class, 'destroyAll']);
+        Route::get('{type}',           [ManageBalanceController::class, 'index']);
+        Route::post('{type}',          [ManageBalanceController::class, 'store']);
+        Route::put('{type}/{id}',      [ManageBalanceController::class, 'update']);
+        Route::delete('{type}/{id}',   [ManageBalanceController::class, 'destroy']);
+    });
+
+    // ── États financiers (Bilan, Compte de résultat, Flux de trésorerie) ─────
+    Route::prefix('financial')->group(function () {
+        Route::get('bilan',               [FinancialController::class, 'bilan']);
+        Route::get('compte-de-resultat',  [FinancialController::class, 'compteDeResultat']);
+        Route::get('flux-tresorerie',     [FinancialController::class, 'fluxTresorerie']);
     });
 
     // ── Donateurs (API — BLOC UNIQUE via DonateurApiController) ──────────────

@@ -22,9 +22,14 @@ class GrandLivreController extends Controller
 
     // ─── Helpers privés ───────────────────────────────────────────────────────
 
+    private ?object $_exerciceActif = null;
+
     private function exerciceActif(): ?object
     {
-        return DB::table('exercices')->where('statut', 1)->first();
+        if ($this->_exerciceActif === null) {
+            $this->_exerciceActif = DB::table('exercices')->where('statut', 1)->first() ?? false;
+        }
+        return $this->_exerciceActif ?: null;
     }
 
     private function entrepriseId(): int
@@ -34,58 +39,60 @@ class GrandLivreController extends Controller
 
     private function buildQuery(Request $request, int $entrepriseId, ?object $exo)
     {
+        $t = 'grand_livres';
+
         $query = GrandLivre::select([
-            'id', 'date_ecriture', 'journal_code', 'piece',
-            'libelle', 'debit', 'credit', 'old_account_id',
-            'new_account_id', 'exercice', 'exercice_id', 'lettre', 'source'
+            "{$t}.id", "{$t}.date_ecriture", "{$t}.journal_code", "{$t}.piece",
+            "{$t}.libelle", "{$t}.debit", "{$t}.credit", "{$t}.old_account_id",
+            "{$t}.new_account_id", "{$t}.exercice", "{$t}.exercice_id", "{$t}.lettre", "{$t}.source"
         ])
-            ->where('exercice_id', $exo->id ?? '')
-            ->with(['oldAccount:id,code,intitule', 'newAccount:id,code,intitule'])
-            ->forEntreprise($entrepriseId)
-            ->valides();
+            ->where("{$t}.exercice_id", $exo->id ?? '')
+            ->where("{$t}.entreprise_id", $entrepriseId)
+            ->where("{$t}.validated", true)
+            ->with(['oldAccount:id,code,intitule', 'newAccount:id,code,intitule']);
 
         // Filtre dates
         if ($request->filled('date_debut') && $request->filled('date_fin')) {
-            $query->whereBetween('date_ecriture', [$request->date_debut, $request->date_fin]);
+            $query->whereBetween("{$t}.date_ecriture", [$request->date_debut, $request->date_fin]);
         }
 
         // Filtre exercice
         if ($request->filled('exercice')) {
-            $query->where('exercice', $request->exercice);
+            $query->where("{$t}.exercice", $request->exercice);
         }
 
         // Filtre journal
         if ($request->filled('journal_code')) {
-            $query->where('journal_code', $request->journal_code);
+            $query->where("{$t}.journal_code", $request->journal_code);
         }
 
         // Filtre lettre
         if ($request->filled('lettre')) {
             if ($request->lettre === 'non') {
-                $query->whereNull('lettre');
+                $query->whereNull("{$t}.lettre");
             } else {
-                $query->where('lettre', $request->lettre);
+                $query->where("{$t}.lettre", $request->lettre);
             }
         }
 
         // Filtre comptes (old ou new)
-        $accountType     = $request->get('account_type', 'all');
+        $accountType      = $request->get('account_type', 'all');
         $selectedAccounts = $request->get('selected_accounts', []);
 
         if ($accountType !== 'all' && !empty($selectedAccounts)) {
             if ($accountType === 'old') {
-                $query->whereIn('old_account_id', $selectedAccounts);
+                $query->whereIn("{$t}.old_account_id", $selectedAccounts);
             } elseif ($accountType === 'new') {
-                $query->whereIn('new_account_id', $selectedAccounts);
+                $query->whereIn("{$t}.new_account_id", $selectedAccounts);
             }
         }
 
         // Recherche texte
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('libelle', 'like', "%{$search}%")
-                    ->orWhere('piece', 'like', "%{$search}%")
+            $query->where(function ($q) use ($search, $t) {
+                $q->where("{$t}.libelle", 'like', "%{$search}%")
+                    ->orWhere("{$t}.piece", 'like', "%{$search}%")
                     ->orWhereHas('oldAccount', fn($s) => $s->where('code', 'like', "%{$search}%")->orWhere('intitule', 'like', "%{$search}%"))
                     ->orWhereHas('newAccount', fn($s) => $s->where('code', 'like', "%{$search}%")->orWhere('intitule', 'like', "%{$search}%"));
             });
@@ -93,15 +100,15 @@ class GrandLivreController extends Controller
 
         // Filtre source
         if ($request->filled('source_filter') && $request->source_filter !== 'all') {
-            $query->where('source', $request->source_filter);
+            $query->where("{$t}.source", $request->source_filter);
         }
 
         // Filtre mapping
         if ($request->filled('mapping_filter') && $request->mapping_filter !== 'all') {
             if ($request->mapping_filter === 'mapped') {
-                $query->whereNotNull('new_account_id');
+                $query->whereNotNull("{$t}.new_account_id");
             } elseif ($request->mapping_filter === 'unmapped') {
-                $query->whereNull('new_account_id');
+                $query->whereNull("{$t}.new_account_id");
             }
         }
 
@@ -112,10 +119,10 @@ class GrandLivreController extends Controller
 
         if (in_array($sortField, $allowed)) {
             if ($sortField === 'source') {
-                $query->orderByRaw("CASE WHEN source = 'manuel' THEN 1 ELSE 0 END")
-                    ->orderBy($sortField, $sortDirection);
+                $query->orderByRaw("CASE WHEN {$t}.source = 'manuel' THEN 1 ELSE 0 END")
+                    ->orderBy("{$t}.{$sortField}", $sortDirection);
             } else {
-                $query->orderBy($sortField, $sortDirection);
+                $query->orderBy("{$t}.{$sortField}", $sortDirection);
             }
         }
 
@@ -133,75 +140,80 @@ class GrandLivreController extends Controller
             $exo          = $this->exerciceActif();
             $entrepriseId = $this->entrepriseId();
 
-            $query = $this->buildQuery($request, $entrepriseId, $exo);
-            $total = $query->count();
+            // ── 1. Pagination (2 requêtes internes : count + select) ──────────
+            $perPage   = min((int) $request->get('per_page', 100), 1000);
+            $ecritures = $this->buildQuery($request, $entrepriseId, $exo)
+                ->paginate($perPage);
 
-            if ($total > self::MAX_RESULTS) {
-                $query->limit(self::MAX_RESULTS);
-            }
-
-            $perPage   = (int) $request->get('per_page', 100);
-            $ecritures = $query->paginate(min($perPage, 1000));
-
-            // ── Stats globales ────────────────────────────────────────────
-            $statsQuery   = $this->buildQuery($request, $entrepriseId, $exo);
-            $statsTotal   = $statsQuery->sum('debit');
-            $statsCredit  = $statsQuery->sum('credit');
+            // ── 2. Stats globales en UNE seule requête avec SUM(CASE…) ────────
+            $aggRow = $this->buildQuery($request, $entrepriseId, $exo)
+                ->reorder()
+                ->select(DB::raw('
+                    COUNT(*)                                                      AS total,
+                    COALESCE(SUM(debit), 0)                                      AS total_debit,
+                    COALESCE(SUM(credit), 0)                                     AS total_credit,
+                    COUNT(DISTINCT journal_code)                                 AS count_journaux,
+                    SUM(CASE WHEN new_account_id IS NOT NULL THEN 1 ELSE 0 END) AS mapped_count,
+                    SUM(CASE WHEN new_account_id IS NULL     THEN 1 ELSE 0 END) AS unmapped_count
+                '))
+                ->first();
 
             $stats = [
-                'total'          => $total,
-                'total_debit'    => $statsTotal,
-                'total_credit'   => $statsCredit,
-                'solde'          => abs($statsTotal - $statsCredit),
-                'count_journaux' => $this->buildQuery($request, $entrepriseId, $exo)
-                    ->distinct('journal_code')->count('journal_code'),
-                'mapped_count'   => $this->buildQuery($request, $entrepriseId, $exo)
-                    ->whereNotNull('new_account_id')->count(),
-                'unmapped_count' => $this->buildQuery($request, $entrepriseId, $exo)
-                    ->whereNull('new_account_id')->count(),
+                'total'          => (int)   $aggRow->total,
+                'total_debit'    => (float) $aggRow->total_debit,
+                'total_credit'   => (float) $aggRow->total_credit,
+                'solde'          => abs((float) $aggRow->total_debit - (float) $aggRow->total_credit),
+                'count_journaux' => (int)   $aggRow->count_journaux,
+                'mapped_count'   => (int)   $aggRow->mapped_count,
+                'unmapped_count' => (int)   $aggRow->unmapped_count,
             ];
 
-            // ── Stats par classe SYCEBNL (calculées sur TOUTES les écritures filtrées) ──
+            // ── 3. Stats par classe SYCEBNL via JOIN SQL (pas de chargement PHP) ──
+            $classRows = $this->buildQuery($request, $entrepriseId, $exo)
+                ->reorder()
+                ->leftJoin('new_accounts as na_cs', 'grand_livres.new_account_id', '=', 'na_cs.id')
+                ->select(DB::raw('
+                    CASE
+                        WHEN na_cs.code IS NULL                                   THEN \'non_mappes\'
+                        WHEN LEFT(na_cs.code, 1) IN (\'1\',\'2\',\'3\',\'4\',\'5\') THEN \'classe_1_5\'
+                        WHEN LEFT(na_cs.code, 1) IN (\'6\',\'7\',\'8\')            THEN \'classe_6_7\'
+                        WHEN LEFT(na_cs.code, 1) = \'9\'                           THEN \'classe_9\'
+                        ELSE \'non_mappes\'
+                    END AS classe,
+                    COALESCE(SUM(grand_livres.debit),  0) AS debit,
+                    COALESCE(SUM(grand_livres.credit), 0) AS credit
+                '))
+                ->groupByRaw('
+                    CASE
+                        WHEN na_cs.code IS NULL                                   THEN \'non_mappes\'
+                        WHEN LEFT(na_cs.code, 1) IN (\'1\',\'2\',\'3\',\'4\',\'5\') THEN \'classe_1_5\'
+                        WHEN LEFT(na_cs.code, 1) IN (\'6\',\'7\',\'8\')            THEN \'classe_6_7\'
+                        WHEN LEFT(na_cs.code, 1) = \'9\'                           THEN \'classe_9\'
+                        ELSE \'non_mappes\'
+                    END
+                ')
+                ->get();
+
             $classStats = [
-                'classe_1_5' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
-                'classe_6_7' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
-                'classe_9'   => ['debit' => 0, 'credit' => 0, 'solde' => 0],
-                'non_mappes' => ['debit' => 0, 'credit' => 0, 'solde' => 0],
-                'global'     => ['debit' => 0, 'credit' => 0, 'solde' => 0],
+                'classe_1_5' => ['debit' => 0.0, 'credit' => 0.0, 'solde' => 0.0],
+                'classe_6_7' => ['debit' => 0.0, 'credit' => 0.0, 'solde' => 0.0],
+                'classe_9'   => ['debit' => 0.0, 'credit' => 0.0, 'solde' => 0.0],
+                'non_mappes' => ['debit' => 0.0, 'credit' => 0.0, 'solde' => 0.0],
+                'global'     => ['debit' => 0.0, 'credit' => 0.0, 'solde' => 0.0],
             ];
 
-            // On récupère uniquement les colonnes nécessaires pour les stats (performance)
-            $allRows = $this->buildQuery($request, $entrepriseId, $exo)
-                ->with('newAccount:id,code')
-                ->get(['id', 'debit', 'credit', 'new_account_id']);
-
-            foreach ($allRows as $e) {
-                $d = (float) ($e->debit  ?? 0);
-                $c = (float) ($e->credit ?? 0);
-
+            foreach ($classRows as $row) {
+                $d = (float) $row->debit;
+                $c = (float) $row->credit;
+                $key = $row->classe;
+                if (isset($classStats[$key])) {
+                    $classStats[$key]['debit']  = $d;
+                    $classStats[$key]['credit'] = $c;
+                    $classStats[$key]['solde']  = $d - $c;
+                }
                 $classStats['global']['debit']  += $d;
                 $classStats['global']['credit'] += $c;
                 $classStats['global']['solde']  += ($d - $c);
-
-                if ($e->newAccount && $e->newAccount->code) {
-                    $first = substr($e->newAccount->code, 0, 1);
-
-                    if (in_array($first, ['1', '2', '3', '4', '5'])) {
-                        $key = 'classe_1_5';
-                    } elseif (in_array($first, ['6', '7', '8'])) {
-                        $key = 'classe_6_7';
-                    } elseif ($first === '9') {
-                        $key = 'classe_9';
-                    } else {
-                        $key = 'non_mappes'; // compte hors classes connues
-                    }
-                } else {
-                    $key = 'non_mappes';
-                }
-
-                $classStats[$key]['debit']  += $d;
-                $classStats[$key]['credit'] += $c;
-                $classStats[$key]['solde']  += ($d - $c);
             }
 
             return $this->success('Liste des écritures.', [
@@ -211,8 +223,8 @@ class GrandLivreController extends Controller
                 'current_page' => $ecritures->currentPage(),
                 'last_page'    => $ecritures->lastPage(),
                 'stats'        => $stats,
-                'class_stats'  => $classStats,   // ← AJOUTÉ
-                'truncated'    => $total > self::MAX_RESULTS,
+                'class_stats'  => $classStats,
+                'truncated'    => $ecritures->total() > self::MAX_RESULTS,
             ]);
         } catch (\Throwable $e) {
             return $this->serverError($e->getMessage());
@@ -260,7 +272,7 @@ class GrandLivreController extends Controller
                 'lettre'         => 'nullable|string|max:10',
             ]);
 
-            if ((!$validated['debit'] ?? 0) <= 0 && (($validated['credit'] ?? 0) <= 0)) {
+            if ((($validated['debit'] ?? 0) <= 0) && (($validated['credit'] ?? 0) <= 0)) {
                 return $this->error('Le débit ou le crédit doit être renseigné avec un montant positif.');
             }
 
@@ -341,6 +353,10 @@ class GrandLivreController extends Controller
                 'exercice'       => 'nullable|integer',
                 'lettre'         => 'nullable|string|max:10',
             ]);
+
+            if ((($validated['debit'] ?? 0) <= 0) && (($validated['credit'] ?? 0) <= 0)) {
+                return $this->error('Le débit ou le crédit doit être renseigné avec un montant positif.');
+            }
 
             DB::beginTransaction();
 
